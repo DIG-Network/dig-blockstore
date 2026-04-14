@@ -14,10 +14,11 @@ items:
   - id: TYP-002
     section: "Constants"
     summary: "Metadata Keys and RocksDB Defaults"
-    status: gap
+    status: done
     spec_ref: "docs/requirements/domains/storage_types/specs/TYP-002.md"
-    tests: []
-    notes: ""
+    tests:
+      - "tests/storage_types/typ_002_metadata_keys.rs"
+    notes: "SCHEMA_VERSION + DEFAULT_* + ZSTD_COMPRESSION_LEVEL in constants.rs; BlockStoreConfig::default + init_genesis wired"
 
   - id: TYP-003
     section: "Configuration"

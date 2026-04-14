@@ -18,7 +18,7 @@ use rocksdb::{ColumnFamilyDescriptor, Options, WriteBatch, DB};
 
 use crate::constants::{
     ALL_COLUMN_FAMILIES, CF_BLOCKS, CF_CANONICAL, CF_HEADERS, CF_METADATA, META_GENESIS_HASH,
-    META_TIP,
+    META_TIP, ZSTD_COMPRESSION_LEVEL,
 };
 use crate::encoding::{hash_key, height_key};
 use crate::error::{
@@ -122,7 +122,7 @@ impl BlockStore {
         }
         // [`ERR-002`](../docs/requirements/domains/error_types/specs/ERR-002_error_from_conversions.md): `?` via [`From<bincode::Error>`] / zstd [`std::io::Error`] → [`BlockStoreError::compression_from_io`].
         let block_bytes = bincode::serialize(block)?;
-        let compressed = zstd::encode_all(block_bytes.as_slice(), 3)
+        let compressed = zstd::encode_all(block_bytes.as_slice(), ZSTD_COMPRESSION_LEVEL)
             .map_err(BlockStoreError::compression_from_io)?;
         let header_bytes = bincode::serialize(&block.header)?;
         let tip = ChainTip { hash, height: 0 };

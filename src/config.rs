@@ -4,6 +4,7 @@
 //! - [`STR-002`](../docs/requirements/domains/crate_structure/specs/STR-002.md),
 //!   [`STR-004`](../docs/requirements/domains/crate_structure/specs/STR-004.md),
 //!   [`STR-005`](../docs/requirements/domains/crate_structure/specs/STR-005.md) (test helper field set)
+//! - Default tunables: [`TYP-002`](../docs/requirements/domains/storage_types/specs/TYP-002.md) (`DEFAULT_*`, [`ZSTD_COMPRESSION_LEVEL`](crate::constants::ZSTD_COMPRESSION_LEVEL))
 //! - Target field set / defaults: [`TYP-008`](../docs/requirements/domains/storage_types/specs/TYP-008.md)
 //!
 //! ## Naming (`db_path` vs `path`)
@@ -22,9 +23,17 @@
 //!
 //! **Rationale:** `BlockStore::open` currently applies only `db_path`, warm-cache flags, and depth; other
 //! fields are carried for API completeness (STR-005 / toward TYP-008) and will wire into RocksDB options
-//! in later requirements (TYP-002 / TYP-003 / BLK-008).
+//! in later requirements ([`TYP-003`](../docs/requirements/domains/storage_types/specs/TYP-003.md) / BLK-008).
+//!
+//! **Defaults:** Numeric tuning aligned with [`TYP-002`](../docs/requirements/domains/storage_types/specs/TYP-002.md)
+//! via [`crate::constants`] (`DEFAULT_*`, [`ZSTD_COMPRESSION_LEVEL`](crate::constants::ZSTD_COMPRESSION_LEVEL)).
 
 use std::path::PathBuf;
+
+use crate::constants::{
+    DEFAULT_BLOCK_CACHE_CAPACITY, DEFAULT_BLOCK_CACHE_SIZE, DEFAULT_HEADER_CACHE_CAPACITY,
+    DEFAULT_MAX_OPEN_FILES, DEFAULT_WRITE_BUFFER_SIZE, ZSTD_COMPRESSION_LEVEL,
+};
 
 /// Configuration for opening or creating a [`crate::store::BlockStore`].
 ///
@@ -102,17 +111,17 @@ impl Default for BlockStoreConfig {
     fn default() -> Self {
         Self {
             db_path: PathBuf::from("dig_blockstore_data"),
-            block_cache_capacity: 1000,
-            header_cache_capacity: 2000,
+            block_cache_capacity: DEFAULT_BLOCK_CACHE_CAPACITY,
+            header_cache_capacity: DEFAULT_HEADER_CACHE_CAPACITY,
             cache_shards: 16,
             warm_cache_on_open: false,
             warm_cache_depth: 64,
-            write_buffer_size: 67_108_864,
-            block_cache_size: 134_217_728,
-            max_open_files: 1000,
+            write_buffer_size: DEFAULT_WRITE_BUFFER_SIZE,
+            block_cache_size: DEFAULT_BLOCK_CACHE_SIZE,
+            max_open_files: DEFAULT_MAX_OPEN_FILES,
             enable_blob_db: true,
             compress_blocks: true,
-            compression_level: 3,
+            compression_level: ZSTD_COMPRESSION_LEVEL,
             use_compression_dict: true,
             write_pipeline_batch_size: 64,
             write_pipeline_flush_ms: 100,

@@ -95,3 +95,7 @@ path = "tests/unit/error_types/test_err_003_display_messages.rs"
 [[test]]
 name = "typ_001_cf_constants"
 path = "tests/storage_types/typ_001_cf_constants.rs"
+
+[[test]]
+name = "typ_002_metadata_keys"
+path = "tests/storage_types/typ_002_metadata_keys.rs"
