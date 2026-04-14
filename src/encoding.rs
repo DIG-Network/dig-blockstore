@@ -74,7 +74,22 @@ pub fn decode_epoch_key(key: &[u8; 8]) -> u64 {
     u64::from_be_bytes(*key)
 }
 
-/// UTF-8 bytes for a metadata key name in `CF_METADATA` ([`KEY-004`](../docs/requirements/domains/key_encoding/specs/KEY-004_metadata_keys.md)).
+/// UTF-8 bytes for a metadata key name in [`crate::constants::CF_METADATA`]
+/// ([`KEY-004`](../docs/requirements/domains/key_encoding/specs/KEY-004_metadata_keys.md),
+/// [`NORMATIVE` §KEY-004](../docs/requirements/domains/key_encoding/NORMATIVE.md#key-004-metadata-keys-variable-utf-8)).
+///
+/// **Contract:** Returns `name.as_bytes()` — the exact UTF-8 encoding of `name`. No length prefix, no type tag,
+/// no NUL terminator. Key length equals the UTF-8 byte length (variable; unlike fixed-width hash/height/epoch keys).
+///
+/// **Well-known keys:** Prefer [`crate::constants::META_TIP`], [`crate::constants::META_GENESIS_HASH`],
+/// [`crate::constants::META_MIN_HEIGHT`], [`crate::constants::META_SCHEMA_VERSION`],
+/// [`crate::constants::META_ZSTD_DICT`] at call sites so metadata names stay centralized ([`TYP-002`](../docs/requirements/domains/storage_types/specs/TYP-002.md)).
+///
+/// **Usage:** Pass `metadata_key(name)` (or `META_*.as_bytes()`) to RocksDB `get_cf` / `put_cf` for `CF_METADATA`
+/// ([`crate::store::BlockStore`]). Human-readable ASCII names aid `ldb` inspection per KEY-004 implementation notes.
+///
+/// **Sort order:** Unlike canonical height keys, metadata rows are looked up by **exact key**; lexicographic order is
+/// not part of the storage contract for this family.
 #[must_use]
 pub fn metadata_key(name: &str) -> &[u8] {
     name.as_bytes()

@@ -105,6 +105,10 @@ name = "test_key_003_epoch_keys"
 path = "tests/test_key_003_epoch_keys.rs"
 
 [[test]]
+name = "test_key_004_metadata_keys"
+path = "tests/test_key_004_metadata_keys.rs"
+
+[[test]]
 name = "typ_001_cf_constants"
 path = "tests/typ_001_cf_constants.rs"
 

@@ -21,6 +21,6 @@ items:
 
   - id: KEY-004
     title: "Metadata Keys (variable UTF-8)"
-    status: gap
+    status: done
     spec_section: "4.4"
-    notes: "Metadata keys for CF_METADATA must be UTF-8 encoded strings"
+    notes: "encoding::metadata_key; META_* in constants; tests/test_key_004_metadata_keys.rs; CF_METADATA UTF-8 bytes, no framing"
