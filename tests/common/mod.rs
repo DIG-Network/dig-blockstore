@@ -7,7 +7,7 @@
 //! ## How integration tests include this module
 //!
 //! Rust treats each `[[test]]` binary as a separate crate root. Submodules are resolved relative to the
-//! test file, so flat `tests/*.rs` crates pull this tree in with:
+//! test file, so flat `tests/<prefix>_<req#>_tests.rs` crates pull this tree in with:
 //! `#[path = "common/mod.rs"] mod common;`
 //!
 //! **Rationale:** Avoid duplicating genesis/block builders in every domain’s test file; keep

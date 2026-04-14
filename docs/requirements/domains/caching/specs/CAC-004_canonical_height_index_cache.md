@@ -79,4 +79,4 @@ canonical_index: RwLock<BTreeMap<u64, Bytes32>>
 
 ## Expected Test Files
 
-- `tests/test_cac_004_canonical_height_index_cache.rs`
+- `tests/cac_004_tests.rs`

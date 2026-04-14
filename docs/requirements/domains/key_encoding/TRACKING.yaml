@@ -5,22 +5,22 @@ items:
     title: "Hash Keys (32 bytes)"
     status: done
     spec_section: "4.1"
-    notes: "encoding::hash_key + tests/test_key_001_hash_keys.rs; raw [u8;32] for CF_BLOCKS/HEADERS/ATTESTED"
+    notes: "encoding::hash_key + tests/key_001_tests.rs; raw [u8;32] for CF_BLOCKS/HEADERS/ATTESTED"
 
   - id: KEY-002
     title: "Height Keys (8 bytes, big-endian)"
     status: done
     spec_section: "4.2"
-    notes: "height_key + decode_height_key; tests/test_key_002_height_keys.rs"
+    notes: "height_key + decode_height_key; tests/key_002_tests.rs"
 
   - id: KEY-003
     title: "Epoch Keys (8 bytes, big-endian)"
     status: done
     spec_section: "4.3"
-    notes: "encoding::epoch_key + decode_epoch_key; tests/test_key_003_epoch_keys.rs; CF_CHECKPOINTS u64 BE (same wire as height_key)"
+    notes: "encoding::epoch_key + decode_epoch_key; tests/key_003_tests.rs; CF_CHECKPOINTS u64 BE (same wire as height_key)"
 
   - id: KEY-004
     title: "Metadata Keys (variable UTF-8)"
     status: done
     spec_section: "4.4"
-    notes: "encoding::metadata_key; META_* in constants; tests/test_key_004_metadata_keys.rs; CF_METADATA UTF-8 bytes, no framing"
+    notes: "encoding::metadata_key; META_* in constants; tests/key_004_tests.rs; CF_METADATA UTF-8 bytes, no framing"

@@ -93,4 +93,4 @@ All RocksDB deletions MUST be issued in a single `WriteBatch` to ensure atomicit
 
 ## Expected Test Files
 
-- `tests/integration/pruning/test_prn_001_prune_before_height.rs`
+- `tests/prn_001_tests.rs`

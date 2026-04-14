@@ -78,4 +78,4 @@
 
 ## Expected Test Files
 
-- `tests/integration/pruning/test_prn_004_min_retained_height_tracking.rs`
+- `tests/prn_004_tests.rs`

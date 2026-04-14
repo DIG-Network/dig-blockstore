@@ -84,4 +84,4 @@ fn decompress_block(data: &[u8]) -> Result<Vec<u8>, BlockStoreError> {
 
 ## Expected Test Files
 
-- `tests/test_err_002_from_conversions.rs`
+- `tests/err_002_tests.rs`

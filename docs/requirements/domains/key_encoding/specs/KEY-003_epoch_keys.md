@@ -52,4 +52,4 @@ pub fn decode_epoch_key(key: &[u8; 8]) -> u64 {
 
 ## Expected Test Files
 
-- `tests/test_key_003_epoch_keys.rs`
+- `tests/key_003_tests.rs`

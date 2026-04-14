@@ -53,7 +53,7 @@ tokio = { version = "1", features = ["full"] }
 memmap2 = "0.9"
 
 [dev-dependencies]
-# Used by `tests/str_001_cargo_deps.rs` to parse this manifest
+# Used by `tests/str_001_tests.rs` to parse this manifest
 # deterministically (STR-001 test plan).
 toml = "0.8"
 # STR-004 / STR-005 — temp dirs and direct RocksDB introspection in integration tests.
@@ -61,81 +61,81 @@ tempfile = "3"
 rocksdb = { version = "0.22", default-features = false, features = ["zstd"] }
 
 [[test]]
-name = "str_001_cargo_deps"
-path = "tests/str_001_cargo_deps.rs"
+name = "str_001_tests"
+path = "tests/str_001_tests.rs"
 
 [[test]]
-name = "str_002_module_hierarchy"
-path = "tests/str_002_module_hierarchy.rs"
+name = "str_002_tests"
+path = "tests/str_002_tests.rs"
 
 [[test]]
-name = "str_003_reexports"
-path = "tests/str_003_reexports.rs"
+name = "str_003_tests"
+path = "tests/str_003_tests.rs"
 
 [[test]]
-name = "str_004_constructor"
-path = "tests/str_004_constructor.rs"
+name = "str_004_tests"
+path = "tests/str_004_tests.rs"
 
 [[test]]
-name = "str_005_test_infra"
-path = "tests/str_005_test_infra.rs"
+name = "str_005_tests"
+path = "tests/str_005_tests.rs"
 
 [[test]]
-name = "test_err_001_enum_variants"
-path = "tests/test_err_001_enum_variants.rs"
+name = "err_001_tests"
+path = "tests/err_001_tests.rs"
 
 [[test]]
-name = "test_err_002_from_conversions"
-path = "tests/test_err_002_from_conversions.rs"
+name = "err_002_tests"
+path = "tests/err_002_tests.rs"
 
 [[test]]
-name = "test_err_003_display_messages"
-path = "tests/test_err_003_display_messages.rs"
+name = "err_003_tests"
+path = "tests/err_003_tests.rs"
 
 [[test]]
-name = "test_key_001_hash_keys"
-path = "tests/test_key_001_hash_keys.rs"
+name = "key_001_tests"
+path = "tests/key_001_tests.rs"
 
 [[test]]
-name = "test_key_002_height_keys"
-path = "tests/test_key_002_height_keys.rs"
+name = "key_002_tests"
+path = "tests/key_002_tests.rs"
 
 [[test]]
-name = "test_key_003_epoch_keys"
-path = "tests/test_key_003_epoch_keys.rs"
+name = "key_003_tests"
+path = "tests/key_003_tests.rs"
 
 [[test]]
-name = "test_key_004_metadata_keys"
-path = "tests/test_key_004_metadata_keys.rs"
+name = "key_004_tests"
+path = "tests/key_004_tests.rs"
 
 [[test]]
-name = "typ_001_cf_constants"
-path = "tests/typ_001_cf_constants.rs"
+name = "typ_001_tests"
+path = "tests/typ_001_tests.rs"
 
 [[test]]
-name = "typ_002_metadata_keys"
-path = "tests/typ_002_metadata_keys.rs"
+name = "typ_002_tests"
+path = "tests/typ_002_tests.rs"
 
 [[test]]
-name = "typ_003_cf_config"
-path = "tests/typ_003_cf_config.rs"
+name = "typ_003_tests"
+path = "tests/typ_003_tests.rs"
 
 [[test]]
-name = "typ_004_block_record"
-path = "tests/typ_004_block_record.rs"
+name = "typ_004_tests"
+path = "tests/typ_004_tests.rs"
 
 [[test]]
-name = "typ_005_stored_checkpoint"
-path = "tests/typ_005_stored_checkpoint.rs"
+name = "typ_005_tests"
+path = "tests/typ_005_tests.rs"
 
 [[test]]
-name = "typ_006_chain_tip"
-path = "tests/typ_006_chain_tip.rs"
+name = "typ_006_tests"
+path = "tests/typ_006_tests.rs"
 
 [[test]]
-name = "typ_007_storage_stats"
-path = "tests/typ_007_storage_stats.rs"
+name = "typ_007_tests"
+path = "tests/typ_007_tests.rs"
 
 [[test]]
-name = "typ_008_config"
-path = "tests/typ_008_config.rs"
+name = "typ_008_tests"
+path = "tests/typ_008_tests.rs"

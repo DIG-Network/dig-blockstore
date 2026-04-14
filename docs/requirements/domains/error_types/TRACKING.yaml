@@ -5,16 +5,16 @@ items:
     title: "BlockStoreError Enum"
     status: done
     spec_section: "12"
-    notes: "13 variants in src/error.rs; stable Serialization strings for STR-004 guards; tests/test_err_001_enum_variants.rs"
+    notes: "13 variants in src/error.rs; stable Serialization strings for STR-004 guards; tests/err_001_tests.rs"
 
   - id: ERR-002
     title: "Error From Conversions"
     status: done
     spec_section: "12"
-    notes: "From<rocksdb::Error> (thiserror); From<bincode::Error>; compression_from_io for zstd io::Error; tests/test_err_002_from_conversions.rs"
+    notes: "From<rocksdb::Error> (thiserror); From<bincode::Error>; compression_from_io for zstd io::Error; tests/err_002_tests.rs"
 
   - id: ERR-003
     title: "Error Display Messages"
     status: done
     spec_section: "12"
-    notes: "thiserror #[error] on all variants; tests/test_err_003_display_messages.rs"
+    notes: "thiserror #[error] on all variants; tests/err_003_tests.rs"

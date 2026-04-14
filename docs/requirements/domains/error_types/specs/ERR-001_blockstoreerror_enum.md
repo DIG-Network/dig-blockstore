@@ -110,4 +110,4 @@ pub enum BlockStoreError {
 
 ## Expected Test Files
 
-- `tests/test_err_001_enum_variants.rs`
+- `tests/err_001_tests.rs`

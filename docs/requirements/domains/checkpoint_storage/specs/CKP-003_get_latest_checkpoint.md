@@ -69,4 +69,4 @@ Because epoch keys are stored as big-endian u64, RocksDB's lexicographic orderin
 
 ## Expected Test Files
 
-- `tests/test_ckp_003_get_latest_checkpoint.rs`
+- `tests/ckp_003_tests.rs`

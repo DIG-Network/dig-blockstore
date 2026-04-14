@@ -87,4 +87,4 @@ On cache miss, the height MUST be obtained by reading the header from `CF_HEADER
 
 ## Expected Test Files
 
-- `tests/test_cac_005_hash_to_height_reverse_cache.rs`
+- `tests/cac_005_tests.rs`

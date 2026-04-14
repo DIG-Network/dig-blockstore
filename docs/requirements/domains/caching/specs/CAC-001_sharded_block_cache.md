@@ -98,4 +98,4 @@ The first byte of the block hash is used as the shard selector. Since block hash
 
 ## Expected Test Files
 
-- `tests/test_cac_001_sharded_block_cache.rs`
+- `tests/cac_001_tests.rs`

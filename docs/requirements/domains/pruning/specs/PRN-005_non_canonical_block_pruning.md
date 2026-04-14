@@ -77,4 +77,4 @@ Non-canonical blocks (e.g., from forks or reorganizations) are stored in `CF_BLO
 
 ## Expected Test Files
 
-- `tests/integration/pruning/test_prn_005_non_canonical_block_pruning.rs`
+- `tests/prn_005_tests.rs`

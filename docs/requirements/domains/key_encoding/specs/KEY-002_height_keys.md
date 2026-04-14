@@ -60,4 +60,4 @@ _(Historical prose used `encode_height_key`; the shipped name is `height_key`, r
 
 ## Expected Test Files
 
-- `tests/test_key_002_height_keys.rs`
+- `tests/key_002_tests.rs`

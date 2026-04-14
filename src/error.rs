@@ -44,7 +44,7 @@ pub const ERR_INIT_GENESIS_ALREADY_INITIALIZED: &str =
 ///
 /// **Display:** Each `#[error("…")]` attribute is the contract for logs and user-facing text ([`ERR-003`](../docs/requirements/domains/error_types/specs/ERR-003_error_display_messages.md)).
 ///
-/// **Async:** All variants are `Send + Sync` (see `test_err_001_enum_variants` static assertions).
+/// **Async:** All variants are `Send + Sync` (see `err_001_tests` static assertions).
 #[derive(Debug, Error)]
 pub enum BlockStoreError {
     /// Wraps an underlying RocksDB error ([`rocksdb::Error`]).

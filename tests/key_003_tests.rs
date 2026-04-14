@@ -10,7 +10,7 @@
 //! - **Encoding:** [`dig_blockstore::epoch_key`] / [`dig_blockstore::decode_epoch_key`] are the public API ([`STR-003`](../docs/requirements/domains/crate_structure/specs/STR-003.md)).
 //!   KEY-003 prose uses `encode_epoch_key` — identical semantics ([`KEY-003`](../docs/requirements/domains/key_encoding/specs/KEY-003_epoch_keys.md)).
 //! - **Column family:** Keys index rows in [`CF_CHECKPOINTS`](dig_blockstore::CF_CHECKPOINTS) ([`TYP-001`](../docs/requirements/domains/storage_types/specs/TYP-001.md));
-//!   [`typ_005_stored_checkpoint.rs`](typ_005_stored_checkpoint.rs) and production `store` code use the same shape for checkpoint puts/gets.
+//!   [`typ_005_tests.rs`](typ_005_tests.rs) and production `store` code use the same shape for checkpoint puts/gets.
 //! - **Sort order:** Bytewise order must track numeric epoch order for range scans (e.g. future [`CKP-004`](../docs/requirements/domains/checkpoint_storage/specs/CKP-004_get_checkpoints_in_range.md)).
 //! - **Consistency with heights:** Wire format matches [`height_key`](dig_blockstore::height_key) ([`KEY-002`](../docs/requirements/domains/key_encoding/specs/KEY-002_height_keys.md)); separate functions preserve call-site intent per KEY-003 implementation notes.
 

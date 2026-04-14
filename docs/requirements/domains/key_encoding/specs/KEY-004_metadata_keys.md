@@ -57,4 +57,4 @@ pub fn metadata_key(name: &str) -> &[u8] {
 
 ## Expected Test Files
 
-- `tests/test_key_004_metadata_keys.rs`
+- `tests/key_004_tests.rs`

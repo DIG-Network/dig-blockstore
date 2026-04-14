@@ -96,4 +96,4 @@ Cache warming is triggered during `BlockStore::open()` when the configuration fl
 
 ## Expected Test Files
 
-- `tests/integration/caching/test_cac_006_cache_warming_on_startup.rs`
+- `tests/cac_006_tests.rs`

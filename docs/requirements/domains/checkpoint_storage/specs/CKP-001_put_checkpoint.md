@@ -72,4 +72,4 @@ The epoch key uses big-endian encoding to ensure that RocksDB's lexicographic by
 
 ## Expected Test Files
 
-- `tests/test_ckp_001_put_checkpoint.rs`
+- `tests/ckp_001_tests.rs`

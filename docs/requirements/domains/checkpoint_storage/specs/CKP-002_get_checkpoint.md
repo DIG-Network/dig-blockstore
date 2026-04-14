@@ -67,4 +67,4 @@ pub fn get_checkpoint(&self, epoch: u64) -> Result<Option<StoredCheckpoint>>
 
 ## Expected Test Files
 
-- `tests/test_ckp_002_get_checkpoint.rs`
+- `tests/ckp_002_tests.rs`

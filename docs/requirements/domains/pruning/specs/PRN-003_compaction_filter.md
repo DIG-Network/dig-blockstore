@@ -81,4 +81,4 @@ For each key-value pair encountered during compaction:
 
 ## Expected Test Files
 
-- `tests/integration/pruning/test_prn_003_compaction_filter.rs`
+- `tests/prn_003_tests.rs`

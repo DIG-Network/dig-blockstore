@@ -10,7 +10,7 @@
 //!
 //! [`Default::default`] follows TYP-008 for the **core** knobs (path, caches, RocksDB, zstd, pipeline flags,
 //! pruning flags). Numeric write-buffer / block-cache / cache capacities reuse [`crate::constants`] so
-//! TYP-002 and TYP-008 stay numerically identical ([`tests/typ_002_metadata_keys.rs`](../../tests/typ_002_metadata_keys.rs)).
+//! TYP-002 and TYP-008 stay numerically identical ([`tests/typ_002_tests.rs`](../../tests/typ_002_tests.rs)).
 //!
 //! **Why manual `Default`:** `#[derive(Default)]` would set `path` to an empty [`PathBuf`]; the spec requires a
 //! conventional relative layout (`data/blockstore`) suitable for local dev and examples.
@@ -24,7 +24,7 @@
 //! - **`readahead_size`** — sequential read hint ([`BLK-006`](../../docs/requirements/domains/block_storage/specs/BLK-006.md)).
 //!
 //! These are **not** duplicated in the short TYP-008 markdown table but are part of the public Rust API and are
-//! covered by [`tests/typ_008_config.rs`](../../tests/typ_008_config.rs).
+//! covered by [`tests/typ_008_tests.rs`](../../tests/typ_008_tests.rs).
 
 use std::path::PathBuf;
 
