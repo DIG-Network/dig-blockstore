@@ -4,27 +4,33 @@
 //! height→hash indexing, caching, rollback, pruning, and checkpoints — see
 //! `docs/resources/SPEC.md` for the authoritative architecture.
 //!
-//! ## Bootstrap status (STR-001)
+//! ## Module layout (STR-002)
 //!
-//! This revision exists to satisfy
-//! [`STR-001`](../docs/requirements/domains/crate_structure/specs/STR-001.md):
-//! the crate root declares the full dependency surface (DIG + Chia + storage)
-//! so downstream work (module layout in STR-002 onward) can compile against
-//! real block types from [`dig-block`](https://github.com/DIG-Network/dig-block).
+//! The subtree under `src/` mirrors [`STR-002`](../docs/requirements/domains/crate_structure/specs/STR-002.md)
+//! and **§16 — Crate boundary** in `docs/resources/SPEC.md`: store, config, types,
+//! constants, errors, encoding, cache, canonical index, compression, async pipeline,
+//! and snapshot I/O.
 //!
-//! The **public store API** (`BlockStore`, configuration, error types, etc.)
-//! lands in later requirements (`STR-002`…`STR-005`, then domain specs). Until
-//! then, this library exposes only a small, documented “dependency smoke” hook
-//! proving the manifest resolves.
+//! Crate-root **`pub use` re-exports** are deferred to [`STR-003`](../docs/requirements/domains/crate_structure/specs/STR-003.md);
+//! consumers should use paths like [`store::BlockStore`](crate::store::BlockStore) until then.
 //!
-//! ## Rationale for `dependency_smoke`
+//! ## STR-001 dependency smoke
 //!
-//! Rust will not compile unused dependency crates. Touching representative types
-//! and traits from each direct dependency forces the compiler to load every
-//! crate listed in `Cargo.toml`, catching missing or mis-featured dependencies
-//! immediately — matching the STR-001 acceptance criterion “`cargo check`
-//! succeeds with no missing-crate errors”.
+//! [`str001_dependency_smoke`] forces every direct `Cargo.toml` dependency to link,
+//! catching resolution failures early ([`STR-001`](../docs/requirements/domains/crate_structure/specs/STR-001.md)).
 #![forbid(unsafe_code)]
+
+pub mod cache;
+pub mod canonical;
+pub mod compression;
+pub mod config;
+pub mod constants;
+pub mod encoding;
+pub mod error;
+pub mod pipeline;
+pub mod snapshot;
+pub mod store;
+pub mod types;
 
 use dig_block::L2BlockHeader;
 use dig_constants::NetworkConstants;

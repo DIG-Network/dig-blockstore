@@ -60,3 +60,7 @@ toml = "0.8"
 [[test]]
 name = "str_001_cargo_deps"
 path = "tests/crate_structure/str_001_cargo_deps.rs"
+
+[[test]]
+name = "str_002_module_hierarchy"
+path = "tests/crate_structure/str_002_module_hierarchy.rs"

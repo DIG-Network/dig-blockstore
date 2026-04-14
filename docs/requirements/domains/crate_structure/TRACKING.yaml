@@ -14,10 +14,11 @@ items:
   - id: STR-002
     section: "Crate Structure"
     summary: "Module Hierarchy"
-    status: gap
+    status: done
     spec_ref: "docs/requirements/domains/crate_structure/specs/STR-002.md"
-    tests: []
-    notes: ""
+    tests:
+      - "tests/crate_structure/str_002_module_hierarchy.rs"
+    notes: "Placeholder types until STR-004+; crate-root re-exports in STR-003"
 
   - id: STR-003
     section: "Crate Structure"

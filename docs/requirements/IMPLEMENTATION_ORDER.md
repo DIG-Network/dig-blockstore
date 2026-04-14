@@ -10,7 +10,7 @@ After completing a requirement: write tests, verify they pass, update TRACKING.y
 ## Phase 0: Crate Structure & Foundation
 
 - [x] STR-001 — Cargo.toml with DIG/Chia/storage crate dependencies and metadata
-- [ ] STR-002 — Module hierarchy (src/lib.rs root, submodule layout matching SPEC Section 16)
+- [x] STR-002 — Module hierarchy (src/lib.rs root, submodule layout matching SPEC Section 16)
 - [ ] STR-003 — Public re-exports (BlockStore, BlockStoreConfig, BlockRecord, etc.)
 - [ ] STR-004 — BlockStore constructor (open, open_readonly, init_genesis)
 - [ ] STR-005 — Test infrastructure (temp RocksDB, test blocks, test config)
