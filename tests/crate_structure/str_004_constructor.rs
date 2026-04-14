@@ -145,6 +145,7 @@ fn test_open_warms_cache() {
         db_path: path,
         warm_cache_on_open: true,
         warm_cache_depth: 8,
+        ..Default::default()
     })
     .unwrap();
     assert!(

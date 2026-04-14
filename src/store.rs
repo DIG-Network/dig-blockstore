@@ -114,9 +114,11 @@ impl BlockStore {
         let cf_b = self.cf(CF_BLOCKS)?;
         let cf_h = self.cf(CF_HEADERS)?;
         let cf_c = self.cf(CF_CANONICAL)?;
-        batch.put_cf(cf_b, hash_key(&hash).as_ref(), &compressed);
-        batch.put_cf(cf_h, hash_key(&hash).as_ref(), &header_bytes);
-        batch.put_cf(cf_c, height_key(0), hash_key(&hash).as_ref());
+        // [`hash_key`] returns `[u8; 32]`; use `.as_slice()` (not `.as_ref()`) so RocksDB keys resolve to
+        // `&[u8]` without ambiguous `AsRef` when the `bitcoin` crate is also in the dependency graph.
+        batch.put_cf(cf_b, hash_key(&hash).as_slice(), &compressed);
+        batch.put_cf(cf_h, hash_key(&hash).as_slice(), &header_bytes);
+        batch.put_cf(cf_c, height_key(0), hash_key(&hash).as_slice());
         batch.put_cf(meta, META_TIP.as_bytes(), tip.to_bytes().as_slice());
         batch.put_cf(meta, META_GENESIS_HASH.as_bytes(), hash.as_ref());
         self.db.write(batch)?;
@@ -137,7 +139,7 @@ impl BlockStore {
     /// Deserialize a full block by hash ([`BLK-002`](../docs/requirements/domains/block_storage/specs/BLK-002.md) precursor).
     pub fn get_block(&self, hash: &Bytes32) -> Result<Option<L2Block>, BlockStoreError> {
         let cf = self.cf(CF_BLOCKS)?;
-        let Some(raw) = self.db.get_cf(cf, hash_key(hash).as_ref())? else {
+        let Some(raw) = self.db.get_cf(cf, hash_key(hash).as_slice())? else {
             return Ok(None);
         };
         let decompressed =
@@ -193,7 +195,7 @@ fn warm_recent_blocks(
             .try_into()
             .map_err(|_| BlockStoreError::InvalidData("canonical entry not 32 bytes".into()))?;
         let hash = Bytes32::new(arr);
-        if db.get_cf(cf_b, hash_key(&hash).as_ref())?.is_some() {
+        if db.get_cf(cf_b, hash_key(&hash).as_slice())?.is_some() {
             count += 1;
         }
     }

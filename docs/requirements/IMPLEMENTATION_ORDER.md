@@ -13,7 +13,7 @@ After completing a requirement: write tests, verify they pass, update TRACKING.y
 - [x] STR-002 — Module hierarchy (src/lib.rs root, submodule layout matching SPEC Section 16)
 - [x] STR-003 — Public re-exports (BlockStore, BlockStoreConfig, BlockRecord, etc.)
 - [x] STR-004 — BlockStore constructor (open, open_readonly, init_genesis)
-- [ ] STR-005 — Test infrastructure (temp RocksDB, test blocks, test config)
+- [x] STR-005 — Test infrastructure (temp RocksDB, test blocks, test config)
 
 ## Phase 1: Error Types & Constants
 
@@ -56,9 +56,14 @@ After completing a requirement: write tests, verify they pass, update TRACKING.y
 - [ ] BLK-005 — Batch retrieval (get_blocks_by_hash via multi_get)
 - [ ] BLK-006 — Prefetching for sequential access (readahead)
 - [ ] BLK-007 — Async API (cache hit on executor, DB miss to spawn_blocking)
-- [ ] BLK-008 — Write pipeline (async batched ingestion, configurable batch/flush)
+- [ ] BLK-008 — Write pipeline (async put_pipelined returning oneshot::Receiver)
 - [ ] BLK-009 — put_attestation / get_attestation in CF_ATTESTED
 - [ ] BLK-010 — update_status (BlockStatus update on BlockRecord in cache)
+- [ ] BLK-011 — has_block (lightweight existence check by hash)
+- [ ] BLK-012 — stats() (storage statistics via StorageStats)
+- [ ] BLK-013 — flush() and compact() (WAL flush and manual compaction)
+- [ ] BLK-014 — get_blocks_in_range (canonical blocks in [start, end] inclusive)
+- [ ] BLK-015 — get_records_in_range (canonical records in [start, end] inclusive)
 
 ## Phase 6: Canonical Chain
 
@@ -86,6 +91,7 @@ After completing a requirement: write tests, verify they pass, update TRACKING.y
 - [ ] ROR-003 — apply_reorg (atomic WriteBatch: rollback + set canonical for new chain)
 - [ ] ROR-004 — Fork preservation (non-canonical blocks remain accessible by hash)
 - [ ] ROR-005 — Rollback boundary validation (below genesis, above tip)
+- [ ] ROR-006 — blocks_to_revert (read-only revert preview)
 
 ## Phase 9: Checkpoint Storage
 
@@ -120,11 +126,11 @@ After completing a requirement: write tests, verify they pass, update TRACKING.y
 | 2 | Storage Types | TYP-001 — TYP-008 (8) |
 | 3 | Key Encoding | KEY-001 — KEY-004 (4) |
 | 4 | Serialization | SER-001 — SER-005 (5) |
-| 5 | Block Storage | BLK-001 — BLK-010 (10) |
+| 5 | Block Storage | BLK-001 — BLK-015 (15) |
 | 6 | Canonical Chain | CAN-001 — CAN-007 (7) |
 | 7 | Caching | CAC-001 — CAC-006 (6) |
-| 8 | Rollback & Reorg | ROR-001 — ROR-005 (5) |
+| 8 | Rollback & Reorg | ROR-001 — ROR-006 (6) |
 | 9 | Checkpoint Storage | CKP-001 — CKP-004 (4) |
 | 10 | Pruning | PRN-001 — PRN-005 (5) |
 | 11 | Snapshot | SNP-001 — SNP-004 (4) |
-| **Total** | | **66** |
+| **Total** | | **72** |

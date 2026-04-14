@@ -41,7 +41,8 @@ items:
   - id: STR-005
     section: "Crate Structure"
     summary: "Test Infrastructure"
-    status: gap
+    status: done
     spec_ref: "docs/requirements/domains/crate_structure/specs/STR-005.md"
-    tests: []
-    notes: ""
+    tests:
+      - "tests/crate_structure/str_005_test_infra.rs"
+    notes: "tests/common/mod.rs helpers; BlockStoreConfig extended toward TYP-008 for test_config()"

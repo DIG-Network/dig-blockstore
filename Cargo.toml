@@ -75,3 +75,7 @@ path = "tests/crate_structure/str_003_reexports.rs"
 [[test]]
 name = "str_004_constructor"
 path = "tests/crate_structure/str_004_constructor.rs"
+
+[[test]]
+name = "str_005_test_infra"
+path = "tests/crate_structure/str_005_test_infra.rs"
