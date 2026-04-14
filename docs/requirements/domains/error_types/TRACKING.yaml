@@ -15,6 +15,6 @@ items:
 
   - id: ERR-003
     title: "Error Display Messages"
-    status: gap
+    status: done
     spec_section: "12"
-    notes: "All variants must produce meaningful Display messages with relevant context"
+    notes: "thiserror #[error] on all variants; tests/unit/error_types/test_err_003_display_messages.rs"

@@ -64,17 +64,18 @@ pub enum BlockStoreError {
 
 ## Acceptance Criteria
 
-1. Every variant produces a non-empty `Display` string.
-2. `RocksDb` display includes the underlying RocksDB error message.
-3. `Serialization` display includes the error description string.
-4. `Compression` display includes the error description string.
-5. `BlockNotFound` display includes the block hash.
-6. `CheckpointNotFound` display includes the epoch number.
-7. `BlockNotInStore` display includes the block hash.
-8. `RollbackBelowMin` display includes both target and min values.
-9. `RollbackAboveTip` display includes both target and tip values.
-10. `SchemaMismatch` display includes both expected and found versions.
-11. `NoTip` and `NotInitialized` produce descriptive static messages.
+1. [x] Every variant produces a non-empty `Display` string.
+2. [x] `RocksDb` display includes the underlying RocksDB error message.
+3. [x] `Serialization` display includes the error description string.
+4. [x] `Compression` display includes the error description string.
+5. [x] `BlockNotFound` display includes the block hash.
+6. [x] `CheckpointNotFound` display includes the epoch number.
+7. [x] `BlockNotInStore` display includes the block hash.
+8. [x] `RollbackBelowMin` display includes both target and min values.
+9. [x] `RollbackAboveTip` display includes both target and tip values.
+10. [x] `SchemaMismatch` display includes both expected and found versions.
+11. [x] `NoTip` and `NotInitialized` produce descriptive static messages.
+12. [x] `EmptyReorgChain` and `PipelineClosed` produce descriptive static messages ([`ERR-001`](ERR-001_blockstoreerror_enum.md) / NORMATIVE).
 
 ## Implementation Notes
 

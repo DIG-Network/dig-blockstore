@@ -7,6 +7,10 @@
 //!   `From<rocksdb::Error>` (via `#[from]`), [`From<bincode::Error>`] for [`Serialization`](BlockStoreError::Serialization),
 //!   and explicit zstd / [`std::io::Error`] → [`Compression`](BlockStoreError::Compression) mapping
 //!   ([`BlockStoreError::compression_from_io`]).
+//! - [`ERR-003`](../docs/requirements/domains/error_types/specs/ERR-003_error_display_messages.md) —
+//!   every variant’s [`std::fmt::Display`] (via thiserror `#[error]`) must embed actionable context: hashes as
+//!   hex ([`Bytes32`](chia_protocol::Bytes32) implements [`Display`](std::fmt::Display)), numeric fields inlined,
+//!   and static messages for unit variants ([`NORMATIVE` ERR-003](../docs/requirements/domains/error_types/NORMATIVE.md#err-003-error-display-messages)).
 //! - Normative: [`ERR domain NORMATIVE`](../docs/requirements/domains/error_types/NORMATIVE.md#err-001-blockstoreerror-enum).
 //! - SPEC: [`SPEC.md` §12](../docs/resources/SPEC.md) (error taxonomy; ERR-001 adds `EmptyReorgChain` and
 //!   `PipelineClosed` beyond the SPEC snippet).
@@ -37,6 +41,8 @@ pub const ERR_INIT_GENESIS_ALREADY_INITIALIZED: &str =
     "init_genesis: block store already initialized";
 
 /// Crate-level error for persistence, chain, and I/O boundaries ([`ERR-001`](../docs/requirements/domains/error_types/specs/ERR-001_blockstoreerror_enum.md)).
+///
+/// **Display:** Each `#[error("…")]` attribute is the contract for logs and user-facing text ([`ERR-003`](../docs/requirements/domains/error_types/specs/ERR-003_error_display_messages.md)).
 ///
 /// **Async:** All variants are `Send + Sync` (see `test_err_001_enum_variants` static assertions).
 #[derive(Debug, Error)]
