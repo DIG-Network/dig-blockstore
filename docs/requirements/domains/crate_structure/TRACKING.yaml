@@ -23,10 +23,11 @@ items:
   - id: STR-003
     section: "Crate Structure"
     summary: "Public Re-exports"
-    status: gap
+    status: done
     spec_ref: "docs/requirements/domains/crate_structure/specs/STR-003.md"
-    tests: []
-    notes: ""
+    tests:
+      - "tests/crate_structure/str_003_reexports.rs"
+    notes: "hash_key/height_key/epoch_key/metadata_key + decode_epoch_key in encoding; pub use in lib.rs"
 
   - id: STR-004
     section: "Crate Structure"

@@ -64,3 +64,7 @@ path = "tests/crate_structure/str_001_cargo_deps.rs"
 [[test]]
 name = "str_002_module_hierarchy"
 path = "tests/crate_structure/str_002_module_hierarchy.rs"
+
+[[test]]
+name = "str_003_reexports"
+path = "tests/crate_structure/str_003_reexports.rs"

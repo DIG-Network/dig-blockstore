@@ -11,8 +11,12 @@
 //! constants, errors, encoding, cache, canonical index, compression, async pipeline,
 //! and snapshot I/O.
 //!
-//! Crate-root **`pub use` re-exports** are deferred to [`STR-003`](../docs/requirements/domains/crate_structure/specs/STR-003.md);
-//! consumers should use paths like [`store::BlockStore`](crate::store::BlockStore) until then.
+//! ## Public API surface (STR-003)
+//!
+//! Primary types, constants, and key helpers are re-exported at the crate root per
+//! [`STR-003`](../docs/requirements/domains/crate_structure/specs/STR-003.md) and **§15** in
+//! `docs/resources/SPEC.md`. Submodules remain `pub` so integration tests and advanced callers
+//! can use qualified paths (e.g. [`store::BlockStore`](crate::store::BlockStore)).
 //!
 //! ## STR-001 dependency smoke
 //!
@@ -31,6 +35,17 @@ pub mod pipeline;
 pub mod snapshot;
 pub mod store;
 pub mod types;
+
+// --- STR-003: flat public API (`use dig_blockstore::{…}`) ---
+pub use config::BlockStoreConfig;
+pub use constants::{
+    CF_ATTESTED, CF_BLOCKS, CF_CANONICAL, CF_CHECKPOINTS, CF_HEADERS, CF_METADATA,
+    META_GENESIS_HASH, META_MIN_HEIGHT, META_SCHEMA_VERSION, META_TIP, META_ZSTD_DICT,
+};
+pub use encoding::{decode_epoch_key, epoch_key, hash_key, height_key, metadata_key};
+pub use error::BlockStoreError;
+pub use store::BlockStore;
+pub use types::{BlockRecord, ChainTip, StorageStats, StoredCheckpoint};
 
 use dig_block::L2BlockHeader;
 use dig_constants::NetworkConstants;
