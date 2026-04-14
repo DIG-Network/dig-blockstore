@@ -41,10 +41,11 @@ items:
   - id: TYP-005
     section: "Types"
     summary: "StoredCheckpoint Struct"
-    status: gap
+    status: done
     spec_ref: "docs/requirements/domains/storage_types/specs/TYP-005.md"
-    tests: []
-    notes: ""
+    tests:
+      - "tests/storage_types/typ_005_stored_checkpoint.rs"
+    notes: "src/types/stored_checkpoint.rs; chia-bls serde feature; embeds dig-block CKP-001 Checkpoint; encode_bincode helpers; RocksDB CF smoke in typ_005 test"
 
   - id: TYP-006
     section: "Types"

@@ -33,7 +33,7 @@ dig-constants = "0.1"
 
 # --- Chia ecosystem (hash type, BLS, SHA-256, Streamable wire interop) ---
 chia-protocol = "0.26"
-chia-bls = "0.26"
+chia-bls = { version = "0.26", features = ["serde"] }
 chia-sha2 = "0.26"
 chia-traits = "0.26"
 
@@ -107,3 +107,7 @@ path = "tests/storage_types/typ_003_cf_config.rs"
 [[test]]
 name = "typ_004_block_record"
 path = "tests/storage_types/typ_004_block_record.rs"
+
+[[test]]
+name = "typ_005_stored_checkpoint"
+path = "tests/storage_types/typ_005_stored_checkpoint.rs"

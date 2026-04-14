@@ -27,7 +27,7 @@ After completing a requirement: write tests, verify they pass, update TRACKING.y
 - [x] TYP-002 — Metadata key constants and RocksDB tuning defaults
 - [x] TYP-003 — Per-CF configuration (bloom filters, compression, compaction, BlobDB)
 - [x] TYP-004 — BlockRecord struct with from_header() constructor
-- [ ] TYP-005 — StoredCheckpoint struct
+- [x] TYP-005 — StoredCheckpoint struct
 - [ ] TYP-006 — ChainTip struct with 40-byte encoding
 - [ ] TYP-007 — StorageStats struct
 - [ ] TYP-008 — BlockStoreConfig struct with all fields and defaults
