@@ -59,10 +59,11 @@ items:
   - id: TYP-007
     section: "Types"
     summary: "StorageStats Struct"
-    status: gap
+    status: done
     spec_ref: "docs/requirements/domains/storage_types/specs/TYP-007.md"
-    tests: []
-    notes: ""
+    tests:
+      - "tests/storage_types/typ_007_storage_stats.rs"
+    notes: "src/types/storage_stats.rs;8 fields + Default/PartialEq/Eq; BLK-012 will populate from RocksDB"
 
   - id: TYP-008
     section: "Configuration"
