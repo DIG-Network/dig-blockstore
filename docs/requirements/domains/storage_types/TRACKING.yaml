@@ -32,10 +32,11 @@ items:
   - id: TYP-004
     section: "Types"
     summary: "BlockRecord Struct"
-    status: gap
+    status: done
     spec_ref: "docs/requirements/domains/storage_types/specs/TYP-004.md"
-    tests: []
-    notes: ""
+    tests:
+      - "tests/storage_types/typ_004_block_record.rs"
+    notes: "src/types/block_record.rs; in_canonical_chain = BlockStatus::is_canonical() (dig-block has no Canonical variant); no serde; block_size 0 from header"
 
   - id: TYP-005
     section: "Types"
