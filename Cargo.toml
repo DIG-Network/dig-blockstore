@@ -93,6 +93,10 @@ name = "test_err_003_display_messages"
 path = "tests/unit/error_types/test_err_003_display_messages.rs"
 
 [[test]]
+name = "test_key_001_hash_keys"
+path = "tests/unit/key_encoding/test_key_001_hash_keys.rs"
+
+[[test]]
 name = "typ_001_cf_constants"
 path = "tests/storage_types/typ_001_cf_constants.rs"
 

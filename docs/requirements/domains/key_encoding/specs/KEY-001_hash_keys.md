@@ -9,10 +9,12 @@ Hash keys used in `CF_BLOCKS`, `CF_HEADERS`, and `CF_ATTESTED` column families M
 The key encoding function for hash-based column families takes a `Bytes32` hash and returns the raw 32-byte slice directly:
 
 ```rust
-/// Encode a block hash as a RocksDB key for hash-keyed column families.
+use chia_protocol::Bytes32;
+
+/// Public API: `dig_blockstore::hash_key` in `src/encoding.rs`.
 /// Returns the raw 32-byte representation with no prefix or framing.
-pub fn encode_hash_key(hash: &Bytes32) -> &[u8; 32] {
-    hash.as_ref()
+pub fn hash_key(hash: &Bytes32) -> &[u8; 32] {
+    hash.as_ref().try_into().expect("Bytes32 is 32 bytes")
 }
 ```
 
@@ -23,10 +25,12 @@ pub fn encode_hash_key(hash: &Bytes32) -> &[u8; 32] {
 
 ## Acceptance Criteria
 
-1. `encode_hash_key` returns a 32-byte slice for any valid `Bytes32` input.
+1. `hash_key` returns a 32-byte array reference for any valid `Bytes32` input.
 2. The returned bytes are identical to the raw bytes of the input hash.
 3. No additional bytes are prepended or appended to the key.
 4. Round-trip: a `Bytes32` constructed from the key bytes is equal to the original hash.
+
+_(Historical spec text referred to `encode_hash_key`; the public API is `hash_key` in `src/encoding.rs`, re-exported at the crate root per STR-003.)_
 
 ## Implementation Notes
 

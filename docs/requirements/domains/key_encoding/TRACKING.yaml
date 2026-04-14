@@ -3,9 +3,9 @@ prefix: KEY
 items:
   - id: KEY-001
     title: "Hash Keys (32 bytes)"
-    status: gap
+    status: done
     spec_section: "4.1"
-    notes: "Hash keys for CF_BLOCKS, CF_HEADERS, CF_ATTESTED must be raw 32-byte Bytes32"
+    notes: "encoding::hash_key + tests/unit/key_encoding/test_key_001_hash_keys.rs; raw [u8;32] for CF_BLOCKS/HEADERS/ATTESTED"
 
   - id: KEY-002
     title: "Height Keys (8 bytes, big-endian)"

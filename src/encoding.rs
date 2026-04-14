@@ -13,7 +13,14 @@
 
 use chia_protocol::Bytes32;
 
-/// Raw32-byte RocksDB key for `CF_BLOCKS` / `CF_HEADERS` / `CF_ATTESTED` ([`KEY-001`](../docs/requirements/domains/key_encoding/specs/KEY-001_hash_keys.md)).
+/// Raw 32-byte RocksDB key for `CF_BLOCKS`, `CF_HEADERS`, and `CF_ATTESTED` ([`KEY-001`](../docs/requirements/domains/key_encoding/specs/KEY-001_hash_keys.md)).
+///
+/// **Contract:** The returned array is **exactly** the [`Bytes32`] octets — no length prefix,
+/// type tag, or endian reinterpretation. This matches NORMATIVE `key = block_hash.as_ref() → [u8; 32]`.
+///
+/// **Usage:** Pass `hash_key(h).as_slice()` to RocksDB APIs expecting `&[u8]` ([`crate::store::BlockStore`]).
+///
+/// **Zero-copy:** The slice borrows the same 32 bytes held inside `Bytes32` (fixed-size wire type from Chia / DIG stack).
 #[must_use]
 pub fn hash_key(hash: &Bytes32) -> &[u8; 32] {
     hash.as_ref()
