@@ -111,3 +111,7 @@ path = "tests/storage_types/typ_004_block_record.rs"
 [[test]]
 name = "typ_005_stored_checkpoint"
 path = "tests/storage_types/typ_005_stored_checkpoint.rs"
+
+[[test]]
+name = "typ_006_chain_tip"
+path = "tests/storage_types/typ_006_chain_tip.rs"

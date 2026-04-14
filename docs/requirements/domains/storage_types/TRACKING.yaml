@@ -50,10 +50,11 @@ items:
   - id: TYP-006
     section: "Types"
     summary: "ChainTip Struct"
-    status: gap
+    status: done
     spec_ref: "docs/requirements/domains/storage_types/specs/TYP-006.md"
-    tests: []
-    notes: ""
+    tests:
+      - "tests/storage_types/typ_006_chain_tip.rs"
+    notes: "src/types/chain_tip.rs; 40-byte META_TIP layout; wrong-length decode -> BlockStoreError::Serialization per ERR-001"
 
   - id: TYP-007
     section: "Types"
