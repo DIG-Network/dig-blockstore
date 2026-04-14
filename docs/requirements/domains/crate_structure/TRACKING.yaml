@@ -32,10 +32,11 @@ items:
   - id: STR-004
     section: "Crate Structure"
     summary: "BlockStore Constructor"
-    status: gap
+    status: done
     spec_ref: "docs/requirements/domains/crate_structure/specs/STR-004.md"
-    tests: []
-    notes: ""
+    tests:
+      - "tests/crate_structure/str_004_constructor.rs"
+    notes: "RocksDB open_cf_descriptors / read-only; genesis via WriteBatch; ChainTip TYP-006 encoding"
 
   - id: STR-005
     section: "Crate Structure"

@@ -56,6 +56,9 @@ memmap2 = "0.9"
 # Used by `tests/crate_structure/str_001_cargo_deps.rs` to parse this manifest
 # deterministically (STR-001 test plan).
 toml = "0.8"
+# STR-004 / STR-005 — temp dirs and direct RocksDB introspection in integration tests.
+tempfile = "3"
+rocksdb = { version = "0.22", default-features = false, features = ["zstd"] }
 
 [[test]]
 name = "str_001_cargo_deps"
@@ -68,3 +71,7 @@ path = "tests/crate_structure/str_002_module_hierarchy.rs"
 [[test]]
 name = "str_003_reexports"
 path = "tests/crate_structure/str_003_reexports.rs"
+
+[[test]]
+name = "str_004_constructor"
+path = "tests/crate_structure/str_004_constructor.rs"

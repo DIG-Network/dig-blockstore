@@ -40,3 +40,13 @@ pub const META_SCHEMA_VERSION: &str = "schema_version";
 
 /// Metadata key: trained zstd dictionary bytes ([`SER-005`](../docs/requirements/domains/serialization/specs/SER-005.md)).
 pub const META_ZSTD_DICT: &str = "zstd_dict";
+
+/// All RocksDB column families opened by [`crate::store::BlockStore::open`] (order is not significant).
+pub const ALL_COLUMN_FAMILIES: &[&str] = &[
+    CF_BLOCKS,
+    CF_HEADERS,
+    CF_ATTESTED,
+    CF_CANONICAL,
+    CF_CHECKPOINTS,
+    CF_METADATA,
+];

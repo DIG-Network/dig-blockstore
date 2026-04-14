@@ -725,6 +725,7 @@ dependencies = [
  "parking_lot",
  "rocksdb",
  "serde",
+ "tempfile",
  "thiserror 1.0.69",
  "tokio",
  "toml",
