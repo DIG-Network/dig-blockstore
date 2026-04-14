@@ -1,0 +1,59 @@
+domain_id: canonical_chain
+normative: docs/requirements/domains/canonical_chain/NORMATIVE.md
+verification: docs/requirements/domains/canonical_chain/VERIFICATION.md
+items:
+  - id: CAN-001
+    section: "Canonical Chain"
+    summary: "Dual-Layer Canonical Index"
+    status: gap
+    spec_ref: "docs/requirements/domains/canonical_chain/specs/CAN-001.md"
+    tests: []
+    notes: ""
+
+  - id: CAN-002
+    section: "Canonical Chain"
+    summary: "canonical.bin Memory-Mapped File"
+    status: gap
+    spec_ref: "docs/requirements/domains/canonical_chain/specs/CAN-002.md"
+    tests: []
+    notes: ""
+
+  - id: CAN-003
+    section: "Canonical Chain"
+    summary: "set_canonical"
+    status: gap
+    spec_ref: "docs/requirements/domains/canonical_chain/specs/CAN-003.md"
+    tests: []
+    notes: ""
+
+  - id: CAN-004
+    section: "Canonical Chain"
+    summary: "set_canonical_batch"
+    status: gap
+    spec_ref: "docs/requirements/domains/canonical_chain/specs/CAN-004.md"
+    tests: []
+    notes: ""
+
+  - id: CAN-005
+    section: "Canonical Chain"
+    summary: "extend_chain"
+    status: gap
+    spec_ref: "docs/requirements/domains/canonical_chain/specs/CAN-005.md"
+    tests: []
+    notes: ""
+
+  - id: CAN-006
+    section: "Canonical Chain"
+    summary: "get_hash_by_height"
+    status: gap
+    spec_ref: "docs/requirements/domains/canonical_chain/specs/CAN-006.md"
+    tests: []
+    notes: ""
+
+  - id: CAN-007
+    section: "Canonical Chain"
+    summary: "Chain Tip Tracking"
+    status: gap
+    spec_ref: "docs/requirements/domains/canonical_chain/specs/CAN-007.md"
+    tests: []
+    notes: ""

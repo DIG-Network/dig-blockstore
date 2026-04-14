@@ -1,0 +1,24 @@
+domain_id: checkpoint_storage
+prefix: CKP
+crate: dig-blockstore
+
+items:
+  - id: CKP-001
+    title: Store Checkpoint (put_checkpoint)
+    status: gap
+    spec_ref: "9.1"
+
+  - id: CKP-002
+    title: Get Checkpoint by Epoch (get_checkpoint)
+    status: gap
+    spec_ref: "9.2"
+
+  - id: CKP-003
+    title: Get Latest Checkpoint (get_latest_checkpoint)
+    status: gap
+    spec_ref: "9.2"
+
+  - id: CKP-004
+    title: Get Checkpoints in Range (get_checkpoints_in_range)
+    status: gap
+    spec_ref: "9.2"

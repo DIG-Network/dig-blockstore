@@ -1,0 +1,29 @@
+domain_id: serialization
+prefix: SER
+crate: dig-blockstore
+
+items:
+  - id: SER-001
+    title: Block Serialization with Dictionary Compression
+    status: gap
+    spec_ref: "13.1"
+
+  - id: SER-002
+    title: Header Serialization
+    status: gap
+    spec_ref: "13.2"
+
+  - id: SER-003
+    title: Wire-Format Interop
+    status: gap
+    spec_ref: "13.3"
+
+  - id: SER-004
+    title: Round-Trip Guarantees
+    status: gap
+    spec_ref: "13.4"
+
+  - id: SER-005
+    title: Dictionary Training and Management
+    status: gap
+    spec_ref: "13.1"

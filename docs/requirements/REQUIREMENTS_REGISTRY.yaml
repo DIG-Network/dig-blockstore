@@ -1,0 +1,114 @@
+schema_version: 1
+
+status_values:
+  active: "Requirements in use for dig-blockstore implementation"
+  planned: "Scoped; not yet verified"
+
+domains:
+  - id: crate_structure
+    title: "Crate Structure"
+    summary: "Cargo.toml with DIG/Chia/storage crate dependencies, module hierarchy, public re-exports, BlockStore constructor and open/open_readonly/init_genesis, test infrastructure with temp RocksDB."
+    status: planned
+    paths:
+      normative: domains/crate_structure/NORMATIVE.md
+      verification: domains/crate_structure/VERIFICATION.md
+      tracking: domains/crate_structure/TRACKING.yaml
+
+  - id: storage_types
+    title: "Storage Types"
+    summary: "Column family constants (CF_BLOCKS, CF_HEADERS, CF_ATTESTED, CF_CANONICAL, CF_CHECKPOINTS, CF_METADATA), metadata key constants, RocksDB tuning defaults, per-CF configuration, BlockRecord struct, StoredCheckpoint struct, ChainTip struct, StorageStats struct, BlockStoreConfig struct."
+    status: planned
+    paths:
+      normative: domains/storage_types/NORMATIVE.md
+      verification: domains/storage_types/VERIFICATION.md
+      tracking: domains/storage_types/TRACKING.yaml
+
+  - id: key_encoding
+    title: "Key Encoding"
+    summary: "Fixed-size binary key encodings: hash keys (32 bytes raw Bytes32), height keys (8 bytes big-endian u64), epoch keys (8 bytes big-endian u64), metadata keys (variable UTF-8). Ensures predictable sort order."
+    status: planned
+    paths:
+      normative: domains/key_encoding/NORMATIVE.md
+      verification: domains/key_encoding/VERIFICATION.md
+      tracking: domains/key_encoding/TRACKING.yaml
+
+  - id: block_storage
+    title: "Block Storage"
+    summary: "put_block (idempotent, stores block+header+record), write pipeline (async batched ingestion), get_block/get_header/get_record by hash, batch retrieval via multi_get, prefetching for sequential access, async API (cache hit on executor, miss to spawn_blocking), put_attestation/get_attestation, update_status."
+    status: planned
+    paths:
+      normative: domains/block_storage/NORMATIVE.md
+      verification: domains/block_storage/VERIFICATION.md
+      tracking: domains/block_storage/TRACKING.yaml
+
+  - id: canonical_chain
+    title: "Canonical Chain"
+    summary: "Dual-layer canonical index (mmap canonical.bin hot path + CF_CANONICAL cold path), set_canonical/set_canonical_batch, extend_chain (store+canonical+tip atomically), get_hash_by_height (O(1) mmap lookup), chain tip tracking (tip/height/set_tip), get_block_by_height, get_epoch_block_hashes."
+    status: planned
+    paths:
+      normative: domains/canonical_chain/NORMATIVE.md
+      verification: domains/canonical_chain/VERIFICATION.md
+      tracking: domains/canonical_chain/TRACKING.yaml
+
+  - id: rollback_reorg
+    title: "Rollback & Reorg"
+    summary: "rollback_to_height (revert canonical without deleting blocks), find_common_ancestor (walk parent hashes), apply_reorg (atomic WriteBatch), fork preservation (non-canonical blocks stay), rollback boundary validation."
+    status: planned
+    paths:
+      normative: domains/rollback_reorg/NORMATIVE.md
+      verification: domains/rollback_reorg/VERIFICATION.md
+      tracking: domains/rollback_reorg/TRACKING.yaml
+
+  - id: checkpoint_storage
+    title: "Checkpoint Storage"
+    summary: "put_checkpoint by epoch, get_checkpoint by epoch, get_latest_checkpoint, get_checkpoints_in_range (epoch range query)."
+    status: planned
+    paths:
+      normative: domains/checkpoint_storage/NORMATIVE.md
+      verification: domains/checkpoint_storage/VERIFICATION.md
+      tracking: domains/checkpoint_storage/TRACKING.yaml
+
+  - id: pruning
+    title: "Pruning"
+    summary: "prune_before_height (remove blocks/headers/records/attestations), prune_checkpoints_before_epoch, compaction filter (background pruning during RocksDB compaction), min_retained_height tracking, non-canonical block pruning."
+    status: planned
+    paths:
+      normative: domains/pruning/NORMATIVE.md
+      verification: domains/pruning/VERIFICATION.md
+      tracking: domains/pruning/TRACKING.yaml
+
+  - id: caching
+    title: "Caching"
+    summary: "Sharded block cache (16 shards, configurable capacity), sharded header cache, BlockRecord cache (in-memory only), canonical height index cache, hash-to-height reverse lookup cache, cache warming on startup."
+    status: planned
+    paths:
+      normative: domains/caching/NORMATIVE.md
+      verification: domains/caching/VERIFICATION.md
+      tracking: domains/caching/TRACKING.yaml
+
+  - id: serialization
+    title: "Serialization"
+    summary: "Block serialization with zstd dictionary compression, header serialization (bincode uncompressed), wire-format interop (chia-traits Streamable), round-trip guarantees, dictionary training and management."
+    status: planned
+    paths:
+      normative: domains/serialization/NORMATIVE.md
+      verification: domains/serialization/VERIFICATION.md
+      tracking: domains/serialization/TRACKING.yaml
+
+  - id: snapshot
+    title: "Snapshot"
+    summary: "Export canonical blocks as streaming snapshot with manifest and checksum, import with schema/contiguity/parent-child validation, SnapshotManifest struct, SHA-256 checksum verification."
+    status: planned
+    paths:
+      normative: domains/snapshot/NORMATIVE.md
+      verification: domains/snapshot/VERIFICATION.md
+      tracking: domains/snapshot/TRACKING.yaml
+
+  - id: error_types
+    title: "Error Types"
+    summary: "BlockStoreError enum (RocksDb, Serialization, Compression, BlockNotFound, CheckpointNotFound, BlockNotInStore, RollbackBelowMin, RollbackAboveTip, NoTip, SchemaMismatch, NotInitialized), thiserror derivation, From conversions."
+    status: planned
+    paths:
+      normative: domains/error_types/NORMATIVE.md
+      verification: domains/error_types/VERIFICATION.md
+      tracking: domains/error_types/TRACKING.yaml

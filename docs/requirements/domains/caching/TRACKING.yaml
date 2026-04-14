@@ -1,0 +1,34 @@
+domain_id: caching
+prefix: CAC
+crate: dig-blockstore
+
+items:
+  - id: CAC-001
+    title: Sharded Block Cache
+    status: gap
+    spec_ref: "11.1"
+
+  - id: CAC-002
+    title: Sharded Header Cache
+    status: gap
+    spec_ref: "11.2"
+
+  - id: CAC-003
+    title: BlockRecord Cache
+    status: gap
+    spec_ref: "11.3"
+
+  - id: CAC-004
+    title: Canonical Height Index Cache
+    status: gap
+    spec_ref: "11.4"
+
+  - id: CAC-005
+    title: Hash-to-Height Reverse Cache
+    status: gap
+    spec_ref: "11.5"
+
+  - id: CAC-006
+    title: Cache Warming on Startup
+    status: gap
+    spec_ref: "11.6"

@@ -1,0 +1,51 @@
+domain_id: rollback_reorg
+normative: docs/requirements/domains/rollback_reorg/NORMATIVE.md
+verification: docs/requirements/domains/rollback_reorg/VERIFICATION.md
+items:
+  - id: ROR-001
+    section: "Rollback & Reorg"
+    summary: "Rollback to Height"
+    status: gap
+    spec_ref: "docs/requirements/domains/rollback_reorg/specs/ROR-001.md"
+    tests: []
+    notes: ""
+
+  - id: ROR-002
+    section: "Rollback & Reorg"
+    summary: "Find Common Ancestor"
+    status: gap
+    spec_ref: "docs/requirements/domains/rollback_reorg/specs/ROR-002.md"
+    tests: []
+    notes: ""
+
+  - id: ROR-003
+    section: "Rollback & Reorg"
+    summary: "Apply Reorg (Atomic)"
+    status: gap
+    spec_ref: "docs/requirements/domains/rollback_reorg/specs/ROR-003.md"
+    tests: []
+    notes: ""
+
+  - id: ROR-004
+    section: "Rollback & Reorg"
+    summary: "Fork Preservation"
+    status: gap
+    spec_ref: "docs/requirements/domains/rollback_reorg/specs/ROR-004.md"
+    tests: []
+    notes: ""
+
+  - id: ROR-005
+    section: "Rollback & Reorg"
+    summary: "Rollback Boundary Validation"
+    status: gap
+    spec_ref: "docs/requirements/domains/rollback_reorg/specs/ROR-005.md"
+    tests: []
+    notes: ""
+
+  - id: ROR-006
+    section: "Rollback & Reorg"
+    summary: "Blocks to Revert"
+    status: gap
+    spec_ref: "docs/requirements/domains/rollback_reorg/specs/ROR-006.md"
+    tests: []
+    notes: ""

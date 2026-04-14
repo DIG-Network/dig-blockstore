@@ -1,0 +1,29 @@
+domain_id: pruning
+prefix: PRN
+crate: dig-blockstore
+
+items:
+  - id: PRN-001
+    title: Prune Before Height (prune_before_height)
+    status: gap
+    spec_ref: "10.1"
+
+  - id: PRN-002
+    title: Prune Checkpoints Before Epoch (prune_checkpoints_before_epoch)
+    status: gap
+    spec_ref: "10.2"
+
+  - id: PRN-003
+    title: Compaction Filter
+    status: gap
+    spec_ref: "10.3"
+
+  - id: PRN-004
+    title: min_retained_height Tracking
+    status: gap
+    spec_ref: "10.4"
+
+  - id: PRN-005
+    title: Non-Canonical Block Pruning
+    status: gap
+    spec_ref: "10.1"

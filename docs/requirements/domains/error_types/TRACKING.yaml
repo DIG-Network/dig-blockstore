@@ -1,0 +1,20 @@
+domain: error_types
+prefix: ERR
+items:
+  - id: ERR-001
+    title: "BlockStoreError Enum"
+    status: gap
+    spec_section: "12"
+    notes: "BlockStoreError must define all 11 variants and derive thiserror::Error"
+
+  - id: ERR-002
+    title: "Error From Conversions"
+    status: gap
+    spec_section: "12"
+    notes: "From<rocksdb::Error>, bincode to Serialization, zstd to Compression"
+
+  - id: ERR-003
+    title: "Error Display Messages"
+    status: gap
+    spec_section: "12"
+    notes: "All variants must produce meaningful Display messages with relevant context"

@@ -1,0 +1,62 @@
+# dig-blockstore — persistent L2 block storage (RocksDB, canonical index, caching).
+#
+# **STR-001 (Cargo.toml dependencies):** This manifest intentionally mirrors the
+# normative dependency set in `docs/requirements/domains/crate_structure/specs/STR-001.md`
+# and `docs/requirements/domains/crate_structure/NORMATIVE.md`, with rationale in
+# `docs/resources/SPEC.md` Section 1.2 (“Crate Dependencies”).
+#
+# **Path vs registry (bootstrap note):** `dig-block` is not yet published on
+# crates.io as of this bootstrap; we pin `version = "0.1"` for semver intent
+# while resolving via `path = "../dig-block"` against the sibling repository.
+# `dig-epoch` is likewise unpublished; an in-repo stub under `stubs/dig-epoch`
+# satisfies the manifest contract until a real `dig-epoch` crate is released.
+# `dig-constants` resolves from crates.io (`"0.1"`).
+#
+# **Semantic links:**
+# - Requirement: `docs/requirements/domains/crate_structure/specs/STR-001.md`
+# - Tracking: `docs/requirements/domains/crate_structure/TRACKING.yaml`
+[package]
+name = "dig-blockstore"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75.0"
+description = "DIG L2 block persistence — RocksDB-backed block store with canonical chain indexing"
+license = "MIT"
+authors = ["DIG Network"]
+repository = "https://github.com/DIG-Network/dig-blockstore"
+
+[dependencies]
+# --- DIG ecosystem (block types, epoch arithmetic, network constants) ---
+dig-block = { version = "0.1", path = "../dig-block" }
+dig-epoch = { version = "0.1", path = "stubs/dig-epoch" }
+dig-constants = "0.1"
+
+# --- Chia ecosystem (hash type, BLS, SHA-256, Streamable wire interop) ---
+chia-protocol = "0.26"
+chia-bls = "0.26"
+chia-sha2 = "0.26"
+chia-traits = "0.26"
+
+# --- Storage backend (column families; zstd feature matches SER/PRN compression plans) ---
+rocksdb = { version = "0.22", default-features = false, features = ["zstd"] }
+
+# --- Serialization & compression ---
+zstd = "0.13"
+bincode = "1"
+serde = { version = "1", features = ["derive"] }
+
+# --- Errors, concurrency, async, caching, mmap ---
+thiserror = "1"
+parking_lot = "0.12"
+lru = "0.12"
+tokio = { version = "1", features = ["full"] }
+memmap2 = "0.9"
+
+[dev-dependencies]
+# Used by `tests/crate_structure/str_001_cargo_deps.rs` to parse this manifest
+# deterministically (STR-001 test plan).
+toml = "0.8"
+
+[[test]]
+name = "str_001_cargo_deps"
+path = "tests/crate_structure/str_001_cargo_deps.rs"

@@ -1,0 +1,26 @@
+domain: key_encoding
+prefix: KEY
+items:
+  - id: KEY-001
+    title: "Hash Keys (32 bytes)"
+    status: gap
+    spec_section: "4.1"
+    notes: "Hash keys for CF_BLOCKS, CF_HEADERS, CF_ATTESTED must be raw 32-byte Bytes32"
+
+  - id: KEY-002
+    title: "Height Keys (8 bytes, big-endian)"
+    status: gap
+    spec_section: "4.2"
+    notes: "Height keys for CF_CANONICAL must be u64 big-endian 8-byte encoding"
+
+  - id: KEY-003
+    title: "Epoch Keys (8 bytes, big-endian)"
+    status: gap
+    spec_section: "4.3"
+    notes: "Epoch keys for CF_CHECKPOINTS must be u64 big-endian 8-byte encoding"
+
+  - id: KEY-004
+    title: "Metadata Keys (variable UTF-8)"
+    status: gap
+    spec_section: "4.4"
+    notes: "Metadata keys for CF_METADATA must be UTF-8 encoded strings"

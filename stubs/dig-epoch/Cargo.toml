@@ -1,0 +1,15 @@
+# Interim **`dig-epoch` workspace stub** consumed as a path dependency from the
+# parent `dig-blockstore` crate. See parent `Cargo.toml` for the bootstrap rationale.
+#
+# **Do not treat this as the real epoch implementation.** Replace with the
+# published `dig-epoch` crate (or a path to the real library) once available.
+[package]
+name = "dig-epoch"
+version = "0.1.0"
+edition = "2021"
+description = "Temporary stub — real dig-epoch crate pending publication"
+license = "MIT"
+authors = ["DIG Network"]
+
+[lib]
+path = "src/lib.rs"

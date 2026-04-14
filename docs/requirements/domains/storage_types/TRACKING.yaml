@@ -1,0 +1,67 @@
+domain_id: storage_types
+normative: docs/requirements/domains/storage_types/NORMATIVE.md
+verification: docs/requirements/domains/storage_types/VERIFICATION.md
+items:
+  - id: TYP-001
+    section: "Constants"
+    summary: "Column Family Constants"
+    status: gap
+    spec_ref: "docs/requirements/domains/storage_types/specs/TYP-001.md"
+    tests: []
+    notes: ""
+
+  - id: TYP-002
+    section: "Constants"
+    summary: "Metadata Keys and RocksDB Defaults"
+    status: gap
+    spec_ref: "docs/requirements/domains/storage_types/specs/TYP-002.md"
+    tests: []
+    notes: ""
+
+  - id: TYP-003
+    section: "Configuration"
+    summary: "Per-CF Configuration"
+    status: gap
+    spec_ref: "docs/requirements/domains/storage_types/specs/TYP-003.md"
+    tests: []
+    notes: ""
+
+  - id: TYP-004
+    section: "Types"
+    summary: "BlockRecord Struct"
+    status: gap
+    spec_ref: "docs/requirements/domains/storage_types/specs/TYP-004.md"
+    tests: []
+    notes: ""
+
+  - id: TYP-005
+    section: "Types"
+    summary: "StoredCheckpoint Struct"
+    status: gap
+    spec_ref: "docs/requirements/domains/storage_types/specs/TYP-005.md"
+    tests: []
+    notes: ""
+
+  - id: TYP-006
+    section: "Types"
+    summary: "ChainTip Struct"
+    status: gap
+    spec_ref: "docs/requirements/domains/storage_types/specs/TYP-006.md"
+    tests: []
+    notes: ""
+
+  - id: TYP-007
+    section: "Types"
+    summary: "StorageStats Struct"
+    status: gap
+    spec_ref: "docs/requirements/domains/storage_types/specs/TYP-007.md"
+    tests: []
+    notes: ""
+
+  - id: TYP-008
+    section: "Configuration"
+    summary: "BlockStoreConfig Struct"
+    status: gap
+    spec_ref: "docs/requirements/domains/storage_types/specs/TYP-008.md"
+    tests: []
+    notes: ""

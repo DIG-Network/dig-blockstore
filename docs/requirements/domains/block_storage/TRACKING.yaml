@@ -1,0 +1,79 @@
+domain_id: block_storage
+prefix: BLK
+crate: dig-blockstore
+
+items:
+  - id: BLK-001
+    title: Store Block (put)
+    status: gap
+    spec_ref: "5.1"
+
+  - id: BLK-002
+    title: Get Block by Hash (get_block)
+    status: gap
+    spec_ref: "5.2"
+
+  - id: BLK-003
+    title: Get Header by Hash (get_header)
+    status: gap
+    spec_ref: "5.2"
+
+  - id: BLK-004
+    title: Get Record by Hash (get_record)
+    status: gap
+    spec_ref: "5.2"
+
+  - id: BLK-005
+    title: Batch Retrieval (get_blocks_by_hash)
+    status: gap
+    spec_ref: "5.3"
+
+  - id: BLK-006
+    title: Prefetching for Sequential Access (stream_blocks_in_range)
+    status: gap
+    spec_ref: "5.4"
+
+  - id: BLK-007
+    title: Async API
+    status: gap
+    spec_ref: "5.5"
+
+  - id: BLK-008
+    title: Write Pipeline (put_pipelined)
+    status: gap
+    spec_ref: "5.1.1"
+
+  - id: BLK-009
+    title: Attestation Storage
+    status: gap
+    spec_ref: "5.6"
+
+  - id: BLK-010
+    title: Status Updates (update_status)
+    status: gap
+    spec_ref: "15.8"
+
+  - id: BLK-011
+    title: Has Block (has_block)
+    status: gap
+    spec_ref: "15.2"
+
+  - id: BLK-012
+    title: Storage Statistics (stats)
+    status: gap
+    spec_ref: "15.7"
+
+  - id: BLK-013
+    title: Flush and Compact (flush, compact)
+    status: gap
+    spec_ref: "15.7"
+
+  - id: BLK-014
+    title: Get Blocks in Range (get_blocks_in_range)
+    status: gap
+    spec_ref: "5.3, 15.3"
+
+  - id: BLK-015
+    title: Get Records in Range (get_records_in_range)
+    status: gap
+    spec_ref: "5.3, 15.3"

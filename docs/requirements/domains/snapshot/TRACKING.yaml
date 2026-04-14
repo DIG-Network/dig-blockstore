@@ -1,0 +1,24 @@
+domain_id: snapshot
+prefix: SNP
+crate: dig-blockstore
+
+items:
+  - id: SNP-001
+    title: Export Snapshot
+    status: gap
+    spec_ref: "14.1"
+
+  - id: SNP-002
+    title: Import Snapshot
+    status: gap
+    spec_ref: "14.2"
+
+  - id: SNP-003
+    title: SnapshotManifest Struct
+    status: gap
+    spec_ref: "14.3"
+
+  - id: SNP-004
+    title: Checksum Verification
+    status: gap
+    spec_ref: "14.1, 14.2"

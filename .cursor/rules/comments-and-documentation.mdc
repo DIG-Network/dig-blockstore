@@ -1,0 +1,29 @@
+---
+description: Tests and production code must include high-signal, LLM-friendly comments with requirement traceability and semantic links.
+alwaysApply: true
+---
+
+# Comments, tests, and traceability
+
+## Tests
+
+- Every test (module, helper, and case where useful) must include **comprehensive comments** that explain:
+  - **What** behavior or invariant is under test.
+  - **How** the assertions and setup demonstrate that a **specific requirement** is satisfied (name or link the requirement when the project uses traceable specs, e.g. `docs/requirements/...`).
+- Prefer clarity over brevity: a future reader or LLM should understand the test’s intent without reverse-engineering the code.
+
+## Production and library code
+
+- All written code must include **high-signal, LLM-friendly** comments that cover:
+  - **Usage**: how to call or integrate the API, including invariants and error modes when non-obvious.
+  - **Rationale**: why this approach exists (trade-offs, rejected alternatives if they help avoid regressions).
+  - **Decisions**: notable design choices that are not obvious from types or names alone.
+  - **Context**: constraints (performance, storage, compatibility) that affect maintenance.
+- Include **semantic links** where they add value:
+  - Paths to authoritative docs (e.g. `docs/resources/SPEC.md`, requirement specs under `docs/requirements/`).
+  - References to related types, modules, or functions (file path + symbol name) so navigation and graph-style reasoning are easy.
+- Avoid noise: comments should increase understanding per line; do not restate what the code obviously does.
+
+## When editing
+
+- New or changed tests and implementation code should be brought up to this standard in the same change when practical, without expanding scope beyond the task.

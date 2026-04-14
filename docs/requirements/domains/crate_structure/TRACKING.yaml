@@ -1,0 +1,44 @@
+domain_id: crate_structure
+normative: docs/requirements/domains/crate_structure/NORMATIVE.md
+verification: docs/requirements/domains/crate_structure/VERIFICATION.md
+items:
+  - id: STR-001
+    section: "Crate Structure"
+    summary: "Cargo.toml Dependencies"
+    status: done
+    spec_ref: "docs/requirements/domains/crate_structure/specs/STR-001.md"
+    tests:
+      - "tests/crate_structure/str_001_cargo_deps.rs"
+    notes: "dig-block via path ../dig-block; dig-epoch stub under stubs/dig-epoch until published"
+
+  - id: STR-002
+    section: "Crate Structure"
+    summary: "Module Hierarchy"
+    status: gap
+    spec_ref: "docs/requirements/domains/crate_structure/specs/STR-002.md"
+    tests: []
+    notes: ""
+
+  - id: STR-003
+    section: "Crate Structure"
+    summary: "Public Re-exports"
+    status: gap
+    spec_ref: "docs/requirements/domains/crate_structure/specs/STR-003.md"
+    tests: []
+    notes: ""
+
+  - id: STR-004
+    section: "Crate Structure"
+    summary: "BlockStore Constructor"
+    status: gap
+    spec_ref: "docs/requirements/domains/crate_structure/specs/STR-004.md"
+    tests: []
+    notes: ""
+
+  - id: STR-005
+    section: "Crate Structure"
+    summary: "Test Infrastructure"
+    status: gap
+    spec_ref: "docs/requirements/domains/crate_structure/specs/STR-005.md"
+    tests: []
+    notes: ""
