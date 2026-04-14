@@ -5,8 +5,9 @@ crate: dig-blockstore
 items:
   - id: SER-001
     title: Block Serialization with Dictionary Compression
-    status: gap
+    status: done
     spec_ref: "13.1"
+    notes: "BlockStore::serialize_block/deserialize_block; META_ZSTD_DICT load + zstd_dictionary_override; tests/ser_001_tests.rs"
 
   - id: SER-002
     title: Header Serialization

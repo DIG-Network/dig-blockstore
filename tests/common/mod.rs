@@ -106,6 +106,8 @@ pub fn test_config(db_path: PathBuf) -> BlockStoreConfig {
         compress_blocks: false,
         compression_level: 1,
         use_compression_dict: false,
+        max_decompressed_block_bytes: 16 * 1024 * 1024,
+        zstd_dictionary_override: None,
         write_pipeline_batch_size: 4,
         write_pipeline_flush_ms: 10,
         write_pipeline_channel_capacity: 8,

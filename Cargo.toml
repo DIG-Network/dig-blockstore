@@ -41,7 +41,8 @@ chia-traits = "0.26"
 rocksdb = { version = "0.22", default-features = false, features = ["zstd"] }
 
 # --- Serialization & compression ---
-zstd = "0.13"
+# `zdict_builder`: dictionary training (`zstd::dict::from_samples`) for SER-001/SER-005 tests and future persistence.
+zstd = { version = "0.13", features = ["zdict_builder"] }
 bincode = "1"
 serde = { version = "1", features = ["derive"] }
 
@@ -107,6 +108,10 @@ path = "tests/key_003_tests.rs"
 [[test]]
 name = "key_004_tests"
 path = "tests/key_004_tests.rs"
+
+[[test]]
+name = "ser_001_tests"
+path = "tests/ser_001_tests.rs"
 
 [[test]]
 name = "typ_001_tests"

@@ -30,7 +30,8 @@ use std::path::PathBuf;
 
 use crate::constants::{
     DEFAULT_BLOCK_CACHE_CAPACITY, DEFAULT_BLOCK_CACHE_SIZE, DEFAULT_HEADER_CACHE_CAPACITY,
-    DEFAULT_MAX_OPEN_FILES, DEFAULT_WRITE_BUFFER_SIZE, ZSTD_COMPRESSION_LEVEL,
+    DEFAULT_MAX_DECOMPRESSED_BLOCK_BYTES, DEFAULT_MAX_OPEN_FILES, DEFAULT_WRITE_BUFFER_SIZE,
+    ZSTD_COMPRESSION_LEVEL,
 };
 
 /// Configuration for opening or creating a [`crate::store::BlockStore`].
@@ -83,6 +84,16 @@ pub struct BlockStoreConfig {
     /// Whether to use a trained zstd dictionary ([`SER-005`](../../docs/requirements/domains/serialization/specs/SER-005.md)).
     pub use_compression_dict: bool,
 
+    /// Max accepted **decompressed** byte length for a stored block body ([`SER-001`](../../docs/requirements/domains/serialization/specs/SER-001.md)).
+    pub max_decompressed_block_bytes: usize,
+
+    /// Optional zstd dictionary bytes wired at open time ([`SER-001`](../../docs/requirements/domains/serialization/specs/SER-001.md)).
+    ///
+    /// **Production:** leave `None` — [`crate::store::BlockStore::open`] loads [`crate::constants::META_ZSTD_DICT`]
+    /// from `CF_METADATA` when [`Self::use_compression_dict`] is true ([`SER-005`](../../docs/requirements/domains/serialization/specs/SER-005.md)).
+    /// **Tests:** set to a trained dictionary to exercise dictionary compress/decompress without persisting metadata first.
+    pub zstd_dictionary_override: Option<Vec<u8>>,
+
     // --- Write pipeline (BLK-008 precursor) ---
     /// Max blocks batched before a pipeline flush.
     pub write_pipeline_batch_size: usize,
@@ -123,6 +134,8 @@ impl Default for BlockStoreConfig {
             compress_blocks: true,
             compression_level: ZSTD_COMPRESSION_LEVEL,
             use_compression_dict: true,
+            max_decompressed_block_bytes: DEFAULT_MAX_DECOMPRESSED_BLOCK_BYTES,
+            zstd_dictionary_override: None,
             write_pipeline_batch_size: 64,
             write_pipeline_flush_ms: 100,
             write_pipeline_channel_capacity: 256,

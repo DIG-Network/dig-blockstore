@@ -80,8 +80,15 @@ pub const DEFAULT_BLOCK_CACHE_CAPACITY: usize = 1000;
 /// Default max entries in the **in-memory** header cache ([`CAC-002`](../docs/requirements/domains/caching/specs/CAC-002.md) precursor).
 pub const DEFAULT_HEADER_CACHE_CAPACITY: usize = 2000;
 
-/// Default zstd level for block body compression ([`SER-001`](../docs/requirements/domains/serialization/specs/SER-001.md); used by [`crate::store::BlockStore::init_genesis`] until full dictionary path lands).
+/// Default zstd level for block body compression ([`SER-001`](../docs/requirements/domains/serialization/specs/SER-001.md); [`crate::store::BlockStore::serialize_block`] / [`crate::config::BlockStoreConfig::default`]).
 pub const ZSTD_COMPRESSION_LEVEL: i32 = 3;
+
+/// Upper bound on **decompressed** block payload size accepted by [`crate::store::BlockStore::deserialize_block`]
+/// ([`SER-001`](../docs/requirements/domains/serialization/specs/SER-001.md) — mitigates malicious zstd bombs).
+///
+/// **Rationale:** Bincode `L2Block` for DIG L2 is expected to stay well below this; the cap bounds allocator
+/// work in [`zstd::bulk::Decompressor::decompress`].
+pub const DEFAULT_MAX_DECOMPRESSED_BLOCK_BYTES: usize = 128 * 1024 * 1024;
 
 /// All column families opened by [`crate::store::BlockStore::open`] / read-only open ([`STR-004`](../docs/requirements/domains/crate_structure/specs/STR-004.md)).
 ///

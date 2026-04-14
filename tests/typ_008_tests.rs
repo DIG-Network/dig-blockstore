@@ -26,8 +26,8 @@ use std::path::PathBuf;
 
 use dig_blockstore::{
     BlockStoreConfig, DEFAULT_BLOCK_CACHE_CAPACITY, DEFAULT_BLOCK_CACHE_SIZE,
-    DEFAULT_HEADER_CACHE_CAPACITY, DEFAULT_MAX_OPEN_FILES, DEFAULT_WRITE_BUFFER_SIZE,
-    ZSTD_COMPRESSION_LEVEL,
+    DEFAULT_HEADER_CACHE_CAPACITY, DEFAULT_MAX_DECOMPRESSED_BLOCK_BYTES, DEFAULT_MAX_OPEN_FILES,
+    DEFAULT_WRITE_BUFFER_SIZE, ZSTD_COMPRESSION_LEVEL,
 };
 
 /// Compare two configs field-by-field ([`BlockStoreConfig`] does not derive [`PartialEq`] per TYP-008).
@@ -45,6 +45,11 @@ fn assert_all_fields_equal(a: &BlockStoreConfig, b: &BlockStoreConfig) {
     assert_eq!(a.compress_blocks, b.compress_blocks);
     assert_eq!(a.compression_level, b.compression_level);
     assert_eq!(a.use_compression_dict, b.use_compression_dict);
+    assert_eq!(
+        a.max_decompressed_block_bytes,
+        b.max_decompressed_block_bytes
+    );
+    assert_eq!(a.zstd_dictionary_override, b.zstd_dictionary_override);
     assert_eq!(a.write_pipeline_batch_size, b.write_pipeline_batch_size);
     assert_eq!(a.write_pipeline_flush_ms, b.write_pipeline_flush_ms);
     assert_eq!(
@@ -142,6 +147,17 @@ fn test_default_use_compression_dict() {
 }
 
 #[test]
+fn test_default_max_decompressed_block_bytes() {
+    // **Proves:** SER-001 / TYP-008 extension — decompressed payload cap matches shared constant.
+    let c = BlockStoreConfig::default();
+    assert_eq!(
+        c.max_decompressed_block_bytes,
+        DEFAULT_MAX_DECOMPRESSED_BLOCK_BYTES
+    );
+    assert!(c.zstd_dictionary_override.is_none());
+}
+
+#[test]
 fn test_default_write_pipeline_batch_size() {
     assert_eq!(BlockStoreConfig::default().write_pipeline_batch_size, 64);
 }
@@ -173,6 +189,11 @@ fn test_default_extension_fields_match_crate_contract() {
     assert_eq!(c.warm_cache_depth, 64);
     assert_eq!(c.write_pipeline_channel_capacity, 256);
     assert_eq!(c.readahead_size, 2_097_152);
+    assert_eq!(
+        c.max_decompressed_block_bytes,
+        DEFAULT_MAX_DECOMPRESSED_BLOCK_BYTES
+    );
+    assert!(c.zstd_dictionary_override.is_none());
 }
 
 #[test]
