@@ -8,7 +8,8 @@
 //!
 //! The subtree under `src/` mirrors [`STR-002`](../docs/requirements/domains/crate_structure/specs/STR-002.md)
 //! and **§16 — Crate boundary** in `docs/resources/SPEC.md`: store, config, types,
-//! constants, errors, encoding, cache, canonical index, compression, async pipeline,
+//! constants, [`cf_options`](crate::cf_options) ([`TYP-003`](../docs/requirements/domains/storage_types/specs/TYP-003.md)),
+//! errors, encoding, cache, canonical index, compression, async pipeline,
 //! and snapshot I/O.
 //!
 //! ## Public API surface (STR-003)
@@ -26,6 +27,7 @@
 
 pub mod cache;
 pub mod canonical;
+pub mod cf_options;
 pub mod compression;
 pub mod config;
 pub mod constants;

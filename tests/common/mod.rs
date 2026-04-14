@@ -84,8 +84,10 @@ pub fn test_block(height: u64, parent_hash: Bytes32) -> L2Block {
 /// [`BlockStoreConfig`](dig_blockstore::BlockStoreConfig) tuned for fast, isolated unit tests.
 ///
 /// **Normative:** [`STR-005`](../../docs/requirements/domains/crate_structure/specs/STR-005.md) — small
-/// in-memory cache capacities, reduced RocksDB budgets, **disabled** BlobDB and block compression so tests
-/// avoid heavyweight options until TYP-003 / SER wiring lands.
+/// in-memory cache capacities, reduced RocksDB budgets, **disabled block compression** (`compress_blocks: false`)
+/// for cheap genesis / round-trip tests; BlobDB stays **`true`** (aligned with
+/// [`BlockStoreConfig::default`]) so [`TYP-003`](../../docs/requirements/domains/storage_types/specs/TYP-003.md)
+/// CF options match [`dig_blockstore::BlockStore::open_readonly`]’s default-derived descriptors.
 ///
 /// **Related:** Production defaults remain [`BlockStoreConfig::default`](dig_blockstore::BlockStoreConfig::default)
 /// ([`TYP-008`](../../docs/requirements/domains/storage_types/specs/TYP-008.md)).
@@ -100,7 +102,7 @@ pub fn test_config(db_path: PathBuf) -> BlockStoreConfig {
         write_buffer_size: 4 * 1024 * 1024,
         block_cache_size: 8 * 1024 * 1024,
         max_open_files: 100,
-        enable_blob_db: false,
+        enable_blob_db: true,
         compress_blocks: false,
         compression_level: 1,
         use_compression_dict: false,

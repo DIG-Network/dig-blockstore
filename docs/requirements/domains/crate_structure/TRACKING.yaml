@@ -18,7 +18,7 @@ items:
     spec_ref: "docs/requirements/domains/crate_structure/specs/STR-002.md"
     tests:
       - "tests/crate_structure/str_002_module_hierarchy.rs"
-    notes: "Placeholder types until STR-004+; crate-root re-exports in STR-003"
+    notes: "Placeholder types until STR-004+; crate-root re-exports in STR-003; src/cf_options.rs added for TYP-003 (listed in STR-002 spec tree)"
 
   - id: STR-003
     section: "Crate Structure"

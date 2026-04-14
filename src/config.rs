@@ -21,9 +21,9 @@
 //! [`Default`] until cache warming is fully integrated across tests (STR-004 already overrides when needed);
 //! TYP-008 lists `true` as the production-oriented default—see tracking for TYP-008 completion.
 //!
-//! **Rationale:** `BlockStore::open` currently applies only `db_path`, warm-cache flags, and depth; other
-//! fields are carried for API completeness (STR-005 / toward TYP-008) and will wire into RocksDB options
-//! in later requirements ([`TYP-003`](../docs/requirements/domains/storage_types/specs/TYP-003.md) / BLK-008).
+//! **Rationale:** `BlockStore::open` applies `db_path`, warm-cache flags, depth, and (via [`crate::cf_options`])
+//! per–column-family RocksDB options from [`TYP-003`](../docs/requirements/domains/storage_types/specs/TYP-003.md);
+//! remaining fields are API-complete toward [`TYP-008`](../docs/requirements/domains/storage_types/specs/TYP-008.md) / BLK-008.
 //!
 //! **Defaults:** Numeric tuning aligned with [`TYP-002`](../docs/requirements/domains/storage_types/specs/TYP-002.md)
 //! via [`crate::constants`] (`DEFAULT_*`, [`ZSTD_COMPRESSION_LEVEL`](crate::constants::ZSTD_COMPRESSION_LEVEL)).

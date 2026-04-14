@@ -25,7 +25,7 @@ After completing a requirement: write tests, verify they pass, update TRACKING.y
 
 - [x] TYP-001 — Column family constants (CF_BLOCKS, CF_HEADERS, CF_ATTESTED, CF_CANONICAL, CF_CHECKPOINTS, CF_METADATA)
 - [x] TYP-002 — Metadata key constants and RocksDB tuning defaults
-- [ ] TYP-003 — Per-CF configuration (bloom filters, compression, compaction, BlobDB)
+  - [x] TYP-003 — Per-CF configuration (bloom filters, compression, compaction, BlobDB)
 - [ ] TYP-004 — BlockRecord struct with from_header() constructor
 - [ ] TYP-005 — StoredCheckpoint struct
 - [ ] TYP-006 — ChainTip struct with 40-byte encoding

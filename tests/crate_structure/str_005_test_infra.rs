@@ -90,10 +90,13 @@ fn test_config_small_caches() {
 }
 
 #[test]
-fn test_config_disables_blob_and_compression() {
-    // **Acceptance:** blob DB off, compression off, low zstd level — keeps store tests predictable.
+fn test_config_blob_matches_default_dict_compression_disabled() {
+    // **BlobDB:** [`TYP-003`](../../docs/requirements/domains/storage_types/specs/TYP-003.md) requires
+    // `enable_blob_db=true` to match [`BlockStoreConfig::default`] / `open_readonly` CF descriptors when
+    // tests reopen the same temp DB. **Block body zstd** stays off (`compress_blocks: false`) for cheap
+    // genesis tests ([`STR-005`](../../docs/requirements/domains/crate_structure/specs/STR-005.md)).
     let cfg = test_config(std::path::PathBuf::from("/tmp/dig_blockstore_test_only"));
-    assert!(!cfg.enable_blob_db);
+    assert!(cfg.enable_blob_db);
     assert!(!cfg.compress_blocks);
     assert!(!cfg.use_compression_dict);
     assert_eq!(cfg.compression_level, 1);

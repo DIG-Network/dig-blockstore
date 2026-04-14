@@ -15,7 +15,7 @@
 |----|--------|---------|----------------------|
 | TYP-001 | done | Column Family Constants | `tests/storage_types/typ_001_cf_constants.rs` asserts exact TYP-001 strings, distinctness, `ALL_COLUMN_FAMILIES` equals exported set, and `BlockStore::open` smoke with those names. |
 | TYP-002 | done | Metadata Keys and RocksDB Defaults | `tests/storage_types/typ_002_metadata_keys.rs` asserts META_*, SCHEMA_VERSION, DEFAULT_*, ZSTD_COMPRESSION_LEVEL; `BlockStoreConfig::default()` matches TYP-002 numerics. |
-| TYP-003 | gap | Per-CF Configuration | Open a BlockStore, inspect RocksDB options for each CF. Verify compaction style, bloom filter presence, BlobDB settings, and compression settings match specification. |
+| TYP-003 | done | Per-CF Configuration | `tests/storage_types/typ_003_cf_config.rs` opens a temp DB, parses RocksDB `OPTIONS-*` dumps (`[CFOptions]` + `[TableOptions/BlockBasedTable]`) per family, asserts compaction/blob/bloom/compression/target_file_size match [`TYP-003.md`](specs/TYP-003.md). |
 | TYP-004 | gap | BlockRecord Struct | Construct BlockRecord via from_header() with a test L2BlockHeader. Verify all fields are populated correctly. Verify BlockRecord is not serialized to RocksDB (in-memory only). |
 | TYP-005 | gap | StoredCheckpoint Struct | Construct a StoredCheckpoint with all fields populated. Verify serialization round-trip preserves all field values. |
 | TYP-006 | gap | ChainTip Struct | Construct ChainTip, call to_bytes(), verify length is 40. Call from_bytes() on the output, verify round-trip equality. Test known hash+height pair against expected byte layout. |

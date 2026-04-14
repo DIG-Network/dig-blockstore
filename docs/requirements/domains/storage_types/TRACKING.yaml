@@ -23,10 +23,11 @@ items:
   - id: TYP-003
     section: "Configuration"
     summary: "Per-CF Configuration"
-    status: gap
+    status: done
     spec_ref: "docs/requirements/domains/storage_types/specs/TYP-003.md"
-    tests: []
-    notes: ""
+    tests:
+      - "tests/storage_types/typ_003_cf_config.rs"
+    notes: "src/cf_options.rs + store open/open_readonly; STR-005 test_config enable_blob_db=true for RocksDB option parity on readonly reopen; STR-002 lists cf_options.rs"
 
   - id: TYP-004
     section: "Types"

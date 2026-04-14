@@ -35,6 +35,7 @@ use dig_blockstore::cache::sharded::ShardedBlockCache;
 use dig_blockstore::cache::warming::CacheWarming;
 use dig_blockstore::canonical::index::CanonicalIndex;
 use dig_blockstore::canonical::mmap::CanonicalMmap;
+use dig_blockstore::cf_options;
 use dig_blockstore::compression::CompressionPipeline;
 use dig_blockstore::config::BlockStoreConfig;
 use dig_blockstore::constants::{
@@ -63,6 +64,7 @@ const REQUIRED_REL_PATHS: &[&str] = &[
     "store.rs",
     "config.rs",
     "constants.rs",
+    "cf_options.rs",
     "error.rs",
     "encoding.rs",
     "compression.rs",
@@ -110,6 +112,7 @@ fn test_each_module_defines_required_public_items() {
     let _ = core::mem::size_of::<CanonicalIndex>();
     let _ = core::mem::size_of::<CanonicalMmap>();
     let _ = core::mem::size_of::<CompressionPipeline>();
+    let _ = cf_options::column_family_descriptors(&BlockStoreConfig::default()).len();
     let _ = core::mem::size_of::<BlockWritePipeline>();
     let _ = core::mem::size_of::<SnapshotIo>();
 

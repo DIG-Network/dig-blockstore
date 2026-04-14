@@ -14,11 +14,12 @@ use std::sync::Arc;
 use chia_protocol::Bytes32;
 use dig_block::L2Block;
 use parking_lot::RwLock;
-use rocksdb::{ColumnFamilyDescriptor, Options, WriteBatch, DB};
+use rocksdb::{Options, WriteBatch, DB};
 
+use crate::cf_options;
 use crate::constants::{
-    ALL_COLUMN_FAMILIES, CF_BLOCKS, CF_CANONICAL, CF_HEADERS, CF_METADATA, META_GENESIS_HASH,
-    META_TIP, ZSTD_COMPRESSION_LEVEL,
+    CF_BLOCKS, CF_CANONICAL, CF_HEADERS, CF_METADATA, META_GENESIS_HASH, META_TIP,
+    ZSTD_COMPRESSION_LEVEL,
 };
 use crate::encoding::{hash_key, height_key};
 use crate::error::{
@@ -50,10 +51,7 @@ impl BlockStore {
         let mut opts = Options::default();
         opts.create_if_missing(true);
         opts.create_missing_column_families(true);
-        let cfs: Vec<_> = ALL_COLUMN_FAMILIES
-            .iter()
-            .map(|name| ColumnFamilyDescriptor::new(*name, Options::default()))
-            .collect();
+        let cfs = cf_options::column_family_descriptors(&config);
         let db = DB::open_cf_descriptors(&opts, &config.db_path, cfs)?;
         let db = Arc::new(db);
         let tip = load_tip(&db)?;
@@ -80,10 +78,13 @@ impl BlockStore {
             )));
         }
         let opts = Options::default();
-        let cfs: Vec<_> = ALL_COLUMN_FAMILIES
-            .iter()
-            .map(|name| ColumnFamilyDescriptor::new(*name, Options::default()))
-            .collect();
+        // CF option structs must match how the DB was created; tests use STR-005 `test_config`, which
+        // mirrors [`BlockStoreConfig::default`] for `enable_blob_db` ([`TYP-003`](../../docs/requirements/domains/storage_types/specs/TYP-003.md)).
+        let readonly_cfg = BlockStoreConfig {
+            db_path: path.to_path_buf(),
+            ..BlockStoreConfig::default()
+        };
+        let cfs = cf_options::column_family_descriptors(&readonly_cfg);
         let db = DB::open_cf_descriptors_read_only(&opts, path, cfs, false)?;
         let db = Arc::new(db);
         let tip = load_tip(&db)?;
