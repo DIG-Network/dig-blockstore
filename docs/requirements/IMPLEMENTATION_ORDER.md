@@ -17,7 +17,7 @@ After completing a requirement: write tests, verify they pass, update TRACKING.y
 
 ## Phase 1: Error Types & Constants
 
-- [ ] ERR-001 — BlockStoreError enum with all variants
+- [x] ERR-001 — BlockStoreError enum with all variants
 - [ ] ERR-002 — Error From conversions (rocksdb::Error, serialization, compression)
 - [ ] ERR-003 — Error context and Display messages
 

@@ -21,7 +21,10 @@ use crate::constants::{
     META_TIP,
 };
 use crate::encoding::{hash_key, height_key};
-use crate::error::BlockStoreError;
+use crate::error::{
+    BlockStoreError, ERR_INIT_GENESIS_ALREADY_INITIALIZED, ERR_INIT_GENESIS_READ_ONLY,
+    ERR_OPEN_READONLY_PATH_MISSING_PREFIX,
+};
 use crate::types::ChainTip;
 use crate::BlockStoreConfig;
 
@@ -36,7 +39,14 @@ pub struct BlockStore {
 impl BlockStore {
     /// Open or create a store at `config.db_path` with all column families ([`STR-004`](../docs/requirements/domains/crate_structure/specs/STR-004.md)).
     pub fn open(config: BlockStoreConfig) -> Result<Self, BlockStoreError> {
-        std::fs::create_dir_all(&config.db_path)?;
+        // ERR-001 has no `Io` variant; surface directory creation failures as [`BlockStoreError::Serialization`]
+        // until the taxonomy adds filesystem errors ([`ERR-001`](../docs/requirements/domains/error_types/specs/ERR-001_blockstoreerror_enum.md)).
+        std::fs::create_dir_all(&config.db_path).map_err(|e| {
+            BlockStoreError::Serialization(format!(
+                "filesystem error creating database directory {}: {e}",
+                config.db_path.display()
+            ))
+        })?;
         let mut opts = Options::default();
         opts.create_if_missing(true);
         opts.create_missing_column_families(true);
@@ -64,7 +74,10 @@ impl BlockStore {
     pub fn open_readonly(path: impl AsRef<Path>) -> Result<Self, BlockStoreError> {
         let path = path.as_ref();
         if !path.exists() {
-            return Err(BlockStoreError::PathDoesNotExist(path.to_path_buf()));
+            return Err(BlockStoreError::Serialization(format!(
+                "{ERR_OPEN_READONLY_PATH_MISSING_PREFIX}{}",
+                path.display()
+            )));
         }
         let opts = Options::default();
         let cfs: Vec<_> = ALL_COLUMN_FAMILIES
@@ -85,7 +98,9 @@ impl BlockStore {
     /// Initialize genesis: empty store only; atomic [`WriteBatch`] ([`STR-004`](../docs/requirements/domains/crate_structure/specs/STR-004.md)).
     pub fn init_genesis(&self, block: &L2Block) -> Result<(), BlockStoreError> {
         if self.read_only {
-            return Err(BlockStoreError::ReadOnly);
+            return Err(BlockStoreError::Serialization(
+                ERR_INIT_GENESIS_READ_ONLY.into(),
+            ));
         }
         let meta = self.cf(CF_METADATA)?;
         if self.db.get_cf(meta, META_TIP.as_bytes())?.is_some()
@@ -94,19 +109,21 @@ impl BlockStore {
                 .get_cf(meta, META_GENESIS_HASH.as_bytes())?
                 .is_some()
         {
-            return Err(BlockStoreError::AlreadyInitialized);
+            return Err(BlockStoreError::Serialization(
+                ERR_INIT_GENESIS_ALREADY_INITIALIZED.into(),
+            ));
         }
         let hash = block.hash();
         if block.height() != 0 {
-            return Err(BlockStoreError::InvalidData(format!(
-                "genesis block height must be 0, got {}",
+            return Err(BlockStoreError::Serialization(format!(
+                "init_genesis: genesis block height must be 0, got {}",
                 block.height()
             )));
         }
         let block_bytes = bincode::serialize(block)
             .map_err(|e| BlockStoreError::Serialization(format!("bincode block: {e}")))?;
         let compressed = zstd::encode_all(block_bytes.as_slice(), 3)
-            .map_err(|e| BlockStoreError::Zstd(e.to_string()))?;
+            .map_err(|e| BlockStoreError::Compression(e.to_string()))?;
         let header_bytes = bincode::serialize(&block.header)
             .map_err(|e| BlockStoreError::Serialization(format!("bincode header: {e}")))?;
         let tip = ChainTip { hash, height: 0 };
@@ -142,8 +159,8 @@ impl BlockStore {
         let Some(raw) = self.db.get_cf(cf, hash_key(hash).as_slice())? else {
             return Ok(None);
         };
-        let decompressed =
-            zstd::decode_all(raw.as_slice()).map_err(|e| BlockStoreError::Zstd(e.to_string()))?;
+        let decompressed = zstd::decode_all(raw.as_slice())
+            .map_err(|e| BlockStoreError::Compression(e.to_string()))?;
         let block: L2Block = bincode::deserialize(&decompressed)
             .map_err(|e| BlockStoreError::Serialization(format!("bincode block decode: {e}")))?;
         Ok(Some(block))
@@ -152,14 +169,14 @@ impl BlockStore {
     fn cf(&self, name: &'static str) -> Result<&rocksdb::ColumnFamily, BlockStoreError> {
         self.db
             .cf_handle(name)
-            .ok_or_else(|| BlockStoreError::InvalidData(format!("missing column family {name}")))
+            .ok_or_else(|| BlockStoreError::Serialization(format!("missing column family {name}")))
     }
 }
 
 fn load_tip(db: &DB) -> Result<Option<ChainTip>, BlockStoreError> {
     let meta = db
         .cf_handle(CF_METADATA)
-        .ok_or_else(|| BlockStoreError::InvalidData("missing CF_METADATA".into()))?;
+        .ok_or_else(|| BlockStoreError::Serialization("missing CF_METADATA".into()))?;
     let Some(raw) = db.get_cf(meta, META_TIP.as_bytes())? else {
         return Ok(None);
     };
@@ -176,10 +193,10 @@ fn warm_recent_blocks(
     };
     let cf_c = db
         .cf_handle(CF_CANONICAL)
-        .ok_or_else(|| BlockStoreError::InvalidData("missing CF_CANONICAL".into()))?;
+        .ok_or_else(|| BlockStoreError::Serialization("missing CF_CANONICAL".into()))?;
     let cf_b = db
         .cf_handle(CF_BLOCKS)
-        .ok_or_else(|| BlockStoreError::InvalidData("missing CF_BLOCKS".into()))?;
+        .ok_or_else(|| BlockStoreError::Serialization("missing CF_BLOCKS".into()))?;
     let mut count = 0usize;
     let start = t.height.saturating_sub(depth.saturating_sub(1));
     for h in start..=t.height {
@@ -193,7 +210,7 @@ fn warm_recent_blocks(
         let arr: [u8; 32] = hash_bytes
             .as_slice()
             .try_into()
-            .map_err(|_| BlockStoreError::InvalidData("canonical entry not 32 bytes".into()))?;
+            .map_err(|_| BlockStoreError::Serialization("canonical entry not 32 bytes".into()))?;
         let hash = Bytes32::new(arr);
         if db.get_cf(cf_b, hash_key(&hash).as_slice())?.is_some() {
             count += 1;

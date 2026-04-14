@@ -3,9 +3,9 @@ prefix: ERR
 items:
   - id: ERR-001
     title: "BlockStoreError Enum"
-    status: gap
+    status: done
     spec_section: "12"
-    notes: "BlockStoreError must define all 11 variants and derive thiserror::Error"
+    notes: "13 variants in src/error.rs; stable Serialization strings for STR-004 guards; tests/unit/error_types/test_err_001_enum_variants.rs"
 
   - id: ERR-002
     title: "Error From Conversions"

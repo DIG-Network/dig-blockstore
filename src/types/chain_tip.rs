@@ -28,7 +28,7 @@ impl ChainTip {
     /// Decode from exactly 40 bytes ([`TYP-006`](../../docs/requirements/domains/storage_types/specs/TYP-006.md) acceptance).
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, BlockStoreError> {
         if bytes.len() != 40 {
-            return Err(BlockStoreError::InvalidData(format!(
+            return Err(BlockStoreError::Serialization(format!(
                 "ChainTip requires 40 bytes, got {}",
                 bytes.len()
             )));

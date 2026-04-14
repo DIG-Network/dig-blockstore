@@ -2,7 +2,7 @@
 
 ## Summary
 
-`BlockStoreError` is the crate-level error type for `dig-blockstore`. It MUST define exactly 11 variants covering all failure modes: RocksDB errors, serialization, compression, missing data, rollback violations, schema mismatches, and uninitialized state. It MUST derive `thiserror::Error` and `Debug`.
+`BlockStoreError` is the crate-level error type for `dig-blockstore`. It MUST define exactly 13 variants covering all failure modes: RocksDB errors, serialization, compression, missing data, rollback violations, schema mismatches, uninitialized state, empty reorg chain, and pipeline closed. It MUST derive `thiserror::Error` and `Debug`.
 
 ## Specification
 
@@ -55,6 +55,14 @@ pub enum BlockStoreError {
     /// Store has not been initialized with a genesis block.
     #[error("store not initialized")]
     NotInitialized,
+
+    /// apply_reorg was called with an empty new_chain_hashes slice.
+    #[error("empty reorg chain: new_chain_hashes must not be empty")]
+    EmptyReorgChain,
+
+    /// The write pipeline channel has been shut down.
+    #[error("write pipeline closed")]
+    PipelineClosed,
 }
 ```
 
@@ -73,15 +81,17 @@ pub enum BlockStoreError {
 | `NoTip` | (unit) | Operations requiring tip on uninitialized store |
 | `SchemaMismatch` | `{ expected: u32, found: u32 }` | Opening store with incompatible schema |
 | `NotInitialized` | (unit) | Operations requiring genesis on fresh store |
+| `EmptyReorgChain` | (unit) | `apply_reorg` called with empty `new_chain_hashes` |
+| `PipelineClosed` | (unit) | Write pipeline channel shut down |
 
 ## Acceptance Criteria
 
-1. `BlockStoreError` defines exactly 11 variants as listed above.
-2. The enum derives `Debug` and `thiserror::Error`.
-3. The enum implements `std::error::Error` (via thiserror).
-4. The enum implements `std::fmt::Display` (via thiserror `#[error]` attributes).
-5. Each variant can be constructed with the documented inner data types.
-6. The enum is `Send + Sync` (required for async error propagation).
+1. [x] `BlockStoreError` defines exactly 13 variants as listed above.
+2. [x] The enum derives `Debug` and `thiserror::Error`.
+3. [x] The enum implements `std::error::Error` (via thiserror).
+4. [x] The enum implements `std::fmt::Display` (via thiserror `#[error]` attributes).
+5. [x] Each variant can be constructed with the documented inner data types.
+6. [x] The enum is `Send + Sync` (required for async error propagation).
 
 ## Implementation Notes
 
@@ -96,7 +106,7 @@ pub enum BlockStoreError {
 2. **Debug trait**: Format each variant with `{:?}`, verify non-empty output.
 3. **Error trait**: Call `.source()` on each variant, verify `RocksDb` returns `Some`, others return `None` or appropriate source.
 4. **Send + Sync**: Static assert that `BlockStoreError: Send + Sync`.
-5. **Exhaustive match**: Write a match expression covering all 11 variants to verify completeness.
+5. **Exhaustive match**: Write a match expression covering all 13 variants to verify completeness.
 
 ## Expected Test Files
 

@@ -43,7 +43,10 @@ pub use constants::{
     META_GENESIS_HASH, META_MIN_HEIGHT, META_SCHEMA_VERSION, META_TIP, META_ZSTD_DICT,
 };
 pub use encoding::{decode_epoch_key, epoch_key, hash_key, height_key, metadata_key};
-pub use error::BlockStoreError;
+pub use error::{
+    BlockStoreError, ERR_INIT_GENESIS_ALREADY_INITIALIZED, ERR_INIT_GENESIS_READ_ONLY,
+    ERR_OPEN_READONLY_PATH_MISSING_PREFIX,
+};
 pub use store::BlockStore;
 pub use types::{BlockRecord, ChainTip, StorageStats, StoredCheckpoint};
 

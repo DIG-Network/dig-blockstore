@@ -1,45 +1,97 @@
 //! `BlockStore` error surface (`BlockStoreError`).
 //!
-//! **Spec / requirements**
-//! - [`STR-004`](../docs/requirements/domains/crate_structure/specs/STR-004.md) — constructors and genesis (`RocksDb`, `ReadOnly`, `AlreadyInitialized`, …).
-//! - Full taxonomy polish: [`ERR-001`…`ERR-003`](../docs/requirements/domains/error_types/NORMATIVE.md).
+//! **Requirements**
+//! - [`ERR-001`](../docs/requirements/domains/error_types/specs/ERR-001_blockstoreerror_enum.md) — thirteen
+//!   variants, `thiserror::Error` + `Debug`.
+//! - Normative: [`ERR domain NORMATIVE`](../docs/requirements/domains/error_types/NORMATIVE.md#err-001-blockstoreerror-enum).
+//! - SPEC: [`SPEC.md` §12](../docs/resources/SPEC.md) (error taxonomy; ERR-001 adds `EmptyReorgChain` and
+//!   `PipelineClosed` beyond the SPEC snippet).
+//!
+//! ## Operational errors without a first-class variant
+//!
+//! [`ERR-001`](../docs/requirements/domains/error_types/specs/ERR-001_blockstoreerror_enum.md) caps the enum at
+//! thirteen cases. Some [`STR-004`](../docs/requirements/domains/crate_structure/specs/STR-004.md) guards
+//! (missing read-only path, read-only mutation, double genesis) therefore map to [`BlockStoreError::Serialization`]
+//! with **stable string payloads** documented below so integration tests and future refactors can match
+//! deterministically. If the taxonomy gains dedicated variants later, these constants become the migration
+//! anchor.
 
-use std::path::PathBuf;
-
+use chia_protocol::Bytes32;
 use thiserror::Error;
 
-/// Top-level error type for persistent block storage operations.
+/// Stable [`BlockStoreError::Serialization`] payload prefix when [`crate::store::BlockStore::open_readonly`]
+/// is called with a path that does not exist on disk.
+pub const ERR_OPEN_READONLY_PATH_MISSING_PREFIX: &str =
+    "open_readonly: database path does not exist: ";
+
+/// Stable [`BlockStoreError::Serialization`] payload when [`crate::store::BlockStore::init_genesis`] runs on
+/// a read-only handle.
+pub const ERR_INIT_GENESIS_READ_ONLY: &str = "init_genesis: block store is read-only";
+
+/// Stable [`BlockStoreError::Serialization`] payload when genesis metadata is already present.
+pub const ERR_INIT_GENESIS_ALREADY_INITIALIZED: &str =
+    "init_genesis: block store already initialized";
+
+/// Crate-level error for persistence, chain, and I/O boundaries ([`ERR-001`](../docs/requirements/domains/error_types/specs/ERR-001_blockstoreerror_enum.md)).
+///
+/// **Async:** All variants are `Send + Sync` (see `test_err_001_enum_variants` static assertions).
 #[derive(Debug, Error)]
 pub enum BlockStoreError {
-    /// Filesystem error creating/opening paths.
-    #[error(transparent)]
-    Io(#[from] std::io::Error),
+    /// Wraps an underlying RocksDB error ([`rocksdb::Error`]).
+    ///
+    /// **`#[source]`:** Preserves the inner error for `Error::source()` (ERR-001 test plan).
+    #[error("rocksdb error: {0}")]
+    RocksDb(
+        #[from]
+        #[source]
+        rocksdb::Error,
+    ),
 
-    /// RocksDB I/O or internal error ([`rocksdb::Error`]).
-    #[error(transparent)]
-    RocksDb(#[from] rocksdb::Error),
-
-    /// Database directory does not exist (e.g. [`crate::store::BlockStore::open_readonly`]).
-    #[error("database path does not exist: {0}")]
-    PathDoesNotExist(PathBuf),
-
-    /// Mutating API called on a read-only store ([`crate::store::BlockStore::open_readonly`]).
-    #[error("operation requires a writable block store")]
-    ReadOnly,
-
-    /// Genesis or tip already present ([`crate::store::BlockStore::init_genesis`]).
-    #[error("block store already initialized")]
-    AlreadyInitialized,
-
-    /// `bincode` encode/decode failure.
+    /// Bincode or other structural encode/decode failure ([`SER-001`](../docs/requirements/domains/serialization/specs/SER-001.md), [`SER-002`](../docs/requirements/domains/serialization/specs/SER-002.md)).
     #[error("serialization error: {0}")]
     Serialization(String),
 
-    /// Malformed stored bytes (tip, hash payload, …).
-    #[error("invalid stored data: {0}")]
-    InvalidData(String),
+    /// Zstd compress/decompress failure ([`SER-001`](../docs/requirements/domains/serialization/specs/SER-001.md)).
+    #[error("compression error: {0}")]
+    Compression(String),
 
-    /// Zstd compress/decompress failure on block payloads ([`SER-001`](../docs/requirements/domains/serialization/specs/SER-001.md)).
-    #[error("zstd error: {0}")]
-    Zstd(String),
+    /// Requested block hash is not present ([`BLK-002`](../docs/requirements/domains/block_storage/specs/BLK-002.md)).
+    #[error("block not found: {0}")]
+    BlockNotFound(Bytes32),
+
+    /// No checkpoint row for the given epoch ([`CKP-002`](../docs/requirements/domains/checkpoint_storage/specs/CKP-002.md)).
+    #[error("checkpoint not found for epoch {0}")]
+    CheckpointNotFound(u64),
+
+    /// Chain / canonical operation referenced a hash that is not stored ([`CAN-003`](../docs/requirements/domains/canonical_chain/specs/CAN-003.md)).
+    #[error("block not in store: {0}")]
+    BlockNotInStore(Bytes32),
+
+    /// Rollback would violate the pruning floor ([`ROR-001`](../docs/requirements/domains/rollback_reorg/specs/ROR-001.md)).
+    #[error("rollback target {target} is below minimum retained height {min}")]
+    RollbackBelowMin { target: u64, min: u64 },
+
+    /// Rollback target is above the current tip ([`ROR-001`](../docs/requirements/domains/rollback_reorg/specs/ROR-001.md)).
+    #[error("rollback target {target} is above current tip {tip}")]
+    RollbackAboveTip { target: u64, tip: u64 },
+
+    /// Metadata does not contain a tip ([`CAN-007`](../docs/requirements/domains/canonical_chain/specs/CAN-007.md)).
+    #[error("no chain tip set")]
+    NoTip,
+
+    /// On-disk schema / version mismatch ([`TYP-002`](../docs/requirements/domains/storage_types/specs/TYP-002.md) metadata keys).
+    #[error("schema mismatch: expected {expected}, found {found}")]
+    SchemaMismatch { expected: u32, found: u32 },
+
+    /// Operation requires genesis / initialized metadata ([`STR-004`](../docs/requirements/domains/crate_structure/specs/STR-004.md), [`BLK-013`](../docs/requirements/domains/block_storage/specs/BLK-013.md)).
+    #[error("store not initialized")]
+    NotInitialized,
+
+    /// [`apply_reorg`](crate::store::BlockStore) called with an empty new chain ([`ROR-003`](../docs/requirements/domains/rollback_reorg/specs/ROR-003.md)).
+    #[error("empty reorg chain: new_chain_hashes must not be empty")]
+    EmptyReorgChain,
+
+    /// Async write pipeline channel is closed ([`BLK-008`](../docs/requirements/domains/block_storage/specs/BLK-008.md)).
+    #[error("write pipeline closed")]
+    PipelineClosed,
 }

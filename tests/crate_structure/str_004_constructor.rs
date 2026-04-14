@@ -18,8 +18,10 @@ use std::path::Path;
 use chia_protocol::Bytes32;
 use dig_block::{L2Block, L2BlockHeader, Signature};
 use dig_blockstore::constants::{ALL_COLUMN_FAMILIES, CF_METADATA, META_GENESIS_HASH, META_TIP};
-use dig_blockstore::error::BlockStoreError;
-use dig_blockstore::{BlockStore, BlockStoreConfig, ChainTip};
+use dig_blockstore::{
+    BlockStore, BlockStoreConfig, BlockStoreError, ChainTip, ERR_INIT_GENESIS_ALREADY_INITIALIZED,
+    ERR_INIT_GENESIS_READ_ONLY, ERR_OPEN_READONLY_PATH_MISSING_PREFIX,
+};
 use dig_constants::DIG_MAINNET;
 use rocksdb::{ColumnFamilyDescriptor, Options, DB};
 use tempfile::TempDir;
@@ -178,7 +180,15 @@ fn test_open_readonly_missing_fails() {
     let path = std::env::temp_dir().join("dig_blockstore_str004_missing_db_xyz");
     let _ = std::fs::remove_dir_all(&path);
     match BlockStore::open_readonly(&path) {
-        Err(e) => assert!(matches!(e, BlockStoreError::PathDoesNotExist(_))),
+        Err(BlockStoreError::Serialization(msg)) => {
+            // ERR-001 has no `PathDoesNotExist`; [`open_readonly`](dig_blockstore::BlockStore::open_readonly)
+            // maps this case to [`Serialization`] with [`ERR_OPEN_READONLY_PATH_MISSING_PREFIX`].
+            assert!(
+                msg.starts_with(ERR_OPEN_READONLY_PATH_MISSING_PREFIX),
+                "unexpected message: {msg}"
+            );
+        }
+        Err(e) => panic!("expected Serialization for missing path, got {e:?}"),
         Ok(_) => panic!("expected error for missing path"),
     }
 }
@@ -198,7 +208,10 @@ fn test_open_readonly_prevents_writes() {
     }
     let store = BlockStore::open_readonly(&path).unwrap();
     let err = store.init_genesis(&sample_genesis_block()).unwrap_err();
-    assert!(matches!(err, BlockStoreError::ReadOnly));
+    assert!(
+        matches!(err, BlockStoreError::Serialization(ref s) if s == ERR_INIT_GENESIS_READ_ONLY),
+        "unexpected err: {err:?}"
+    );
 }
 
 #[test]
@@ -264,7 +277,10 @@ fn test_init_genesis_fails_if_initialized() {
     .unwrap();
     store.init_genesis(&block).unwrap();
     let err = store.init_genesis(&block).unwrap_err();
-    assert!(matches!(err, BlockStoreError::AlreadyInitialized));
+    assert!(
+        matches!(err, BlockStoreError::Serialization(ref s) if s == ERR_INIT_GENESIS_ALREADY_INITIALIZED),
+        "unexpected err: {err:?}"
+    );
 }
 
 #[test]
