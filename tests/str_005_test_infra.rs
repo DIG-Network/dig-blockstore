@@ -1,16 +1,16 @@
 //! # STR-005 — shared test infrastructure (temp dirs, deterministic blocks, `test_config`, chains)
 //!
 //! **Trace**
-//! - [`STR-005.md`](../../../docs/requirements/domains/crate_structure/specs/STR-005.md) — normative helpers + acceptance rows
-//! - [`NORMATIVE` crate_structure](../../../docs/requirements/domains/crate_structure/NORMATIVE.md) — test config expectations
+//! - [`STR-005.md`](../docs/requirements/domains/crate_structure/specs/STR-005.md) — normative helpers + acceptance rows
+//! - [`NORMATIVE` crate_structure](../docs/requirements/domains/crate_structure/NORMATIVE.md) — test config expectations
 //!
 //! ## What this file proves
 //!
 //! Each test maps to the STR-005 acceptance checklist and/or the STR-005 test-plan table. We exercise
-//! helpers from [`tests/common/mod.rs`](../common/mod.rs) only (no production shortcuts) so later domain
+//! helpers from [`tests/common/mod.rs`](common/mod.rs) only (no production shortcuts) so later domain
 //! tests can rely on the same contracts.
 
-#[path = "../common/mod.rs"]
+#[path = "common/mod.rs"]
 mod common;
 
 use chia_protocol::Bytes32;
@@ -91,10 +91,10 @@ fn test_config_small_caches() {
 
 #[test]
 fn test_config_blob_matches_default_dict_compression_disabled() {
-    // **BlobDB:** [`TYP-003`](../../docs/requirements/domains/storage_types/specs/TYP-003.md) requires
+    // **BlobDB:** [`TYP-003`](../docs/requirements/domains/storage_types/specs/TYP-003.md) requires
     // `enable_blob_db=true` to match [`BlockStoreConfig::default`] / `open_readonly` CF descriptors when
     // tests reopen the same temp DB. **Block body zstd** stays off (`compress_blocks: false`) for cheap
-    // genesis tests ([`STR-005`](../../docs/requirements/domains/crate_structure/specs/STR-005.md)).
+    // genesis tests ([`STR-005`](../docs/requirements/domains/crate_structure/specs/STR-005.md)).
     let cfg = test_config(std::path::PathBuf::from("/tmp/dig_blockstore_test_only"));
     assert!(cfg.enable_blob_db);
     assert!(!cfg.compress_blocks);

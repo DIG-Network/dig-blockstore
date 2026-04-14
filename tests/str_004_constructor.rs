@@ -1,9 +1,9 @@
 //! # STR-004 — `BlockStore` constructors (`open`, `open_readonly`, `init_genesis`)
 //!
 //! **Trace (`docs/prompt/start.md`)**
-//! - [`STR-004.md`](../../../docs/requirements/domains/crate_structure/specs/STR-004.md) — signatures, behaviors, test plan table
-//! - [`NORMATIVE` STR-004](../../../docs/requirements/domains/crate_structure/NORMATIVE.md)
-//! - [`SPEC.md` §15.1](../../../docs/resources/SPEC.md) — public constructor API
+//! - [`STR-004.md`](../docs/requirements/domains/crate_structure/specs/STR-004.md) — signatures, behaviors, test plan table
+//! - [`NORMATIVE` STR-004](../docs/requirements/domains/crate_structure/NORMATIVE.md)
+//! - [`SPEC.md` §15.1](../docs/resources/SPEC.md) — public constructor API
 //!
 //! ## What this file proves
 //!
@@ -61,7 +61,7 @@ fn test_open_creates_new_db() {
     let _store = BlockStore::open(cfg).unwrap();
     assert!(
         dir.path().join("CURRENT").is_file(),
-        "RocksDB should create CURRENT on first open ([`STR-004`](../../../docs/requirements/domains/crate_structure/specs/STR-004.md))"
+        "RocksDB should create CURRENT on first open ([`STR-004`](../docs/requirements/domains/crate_structure/specs/STR-004.md))"
     );
 }
 

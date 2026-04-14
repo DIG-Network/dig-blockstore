@@ -57,4 +57,4 @@ pub fn encode_metadata_key(name: &str) -> &[u8] {
 
 ## Expected Test Files
 
-- `tests/unit/key_encoding/test_key_004_metadata_keys.rs`
+- `tests/test_key_004_metadata_keys.rs`

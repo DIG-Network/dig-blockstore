@@ -1,9 +1,9 @@
 //! # ERR-001 — `BlockStoreError` enum completeness and trait contracts
 //!
 //! **Trace (`docs/prompt/start.md`)**
-//! - [`ERR-001_blockstoreerror_enum.md`](../../../docs/requirements/domains/error_types/specs/ERR-001_blockstoreerror_enum.md) — thirteen variants, `thiserror`, test plan §1–5
-//! - [`NORMATIVE` ERR-001](../../../docs/requirements/domains/error_types/NORMATIVE.md#err-001-blockstoreerror-enum)
-//! - [`VERIFICATION.md`](../../../docs/requirements/domains/error_types/VERIFICATION.md) — matrix row ERR-001
+//! - [`ERR-001_blockstoreerror_enum.md`](../docs/requirements/domains/error_types/specs/ERR-001_blockstoreerror_enum.md) — thirteen variants, `thiserror`, test plan §1–5
+//! - [`NORMATIVE` ERR-001](../docs/requirements/domains/error_types/NORMATIVE.md#err-001-blockstoreerror-enum)
+//! - [`VERIFICATION.md`](../docs/requirements/domains/error_types/VERIFICATION.md) — matrix row ERR-001
 //!
 //! ## What this file proves
 //!
@@ -13,7 +13,7 @@
 //! 3. **`std::error::Error::source`** — Only [`BlockStoreError::RocksDb`] chains an inner [`rocksdb::Error`];
 //!    other variants are leaves (ERR-001 test plan expectation).
 //! 4. **`Send + Sync`** — Required for `Result<T, BlockStoreError>` across `tokio` task boundaries ([`ERR-001`
-//!    acceptance §6](../../../docs/requirements/domains/error_types/specs/ERR-001_blockstoreerror_enum.md)).
+//!    acceptance §6](../docs/requirements/domains/error_types/specs/ERR-001_blockstoreerror_enum.md)).
 //! 5. **Exhaustiveness** — A single `match` over all thirteen variants must compile, guarding against silent
 //!    enum drift when new failure modes land in later requirements.
 

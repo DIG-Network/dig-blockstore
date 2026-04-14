@@ -1,0 +1,16 @@
+---
+alwaysApply: true
+---
+
+# Requirement tests: flat `tests/` layout
+
+- Each tracked requirement’s integration test crate is **one dedicated file** at **`tests/<name>.rs`** (e.g. `tests/str_004_constructor.rs`, `tests/typ_003_cf_config.rs`, `tests/test_key_001_hash_keys.rs`).
+- **Shared helpers only** in **`tests/common/mod.rs`**. Each test crate that needs them must use:
+  `#[path = "common/mod.rs"] mod common;`
+- **Do not** add subfolders under `tests/` for domain buckets (`tests/unit/...`, `tests/storage_types/...`, etc.). New requirements extend the flat list and get a `[[test]]` entry in `Cargo.toml`.
+- When updating docs (`TRACKING.yaml`, spec “Expected test files”, `VERIFICATION.md`), reference paths as `tests/<file>.rs`.
+
+# GitNexus before code changes
+
+- **Before** editing `src/`, `tests/`, or code-related requirement docs: from the repo root run **`npx gitnexus status`**; if the index is missing or stale, run **`npx gitnexus analyze`**, then follow **`gitnexus.mdc`** (`gitnexus_impact` / MCP for named symbols).
+- If the GitNexus CLI or MCP is unavailable or errors (e.g. npm/`node.target`), **state that in the session**, use careful local review, and prefer smaller scoped edits.

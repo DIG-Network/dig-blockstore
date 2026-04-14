@@ -1,25 +1,25 @@
 //! # TYP-006 — [`dig_blockstore::ChainTip`] 40-byte wire encoding
 //!
 //! **Trace (`docs/prompt/start.md`)**
-//! - Spec + test plan: [`TYP-006.md`](../../docs/requirements/domains/storage_types/specs/TYP-006.md)
-//! - NORMATIVE: [`NORMATIVE.md`](../../docs/requirements/domains/storage_types/NORMATIVE.md#typ-006-chaintip-struct)
-//! - Verification: [`VERIFICATION.md`](../../docs/requirements/domains/storage_types/VERIFICATION.md)
+//! - Spec + test plan: [`TYP-006.md`](../docs/requirements/domains/storage_types/specs/TYP-006.md)
+//! - NORMATIVE: [`NORMATIVE.md`](../docs/requirements/domains/storage_types/NORMATIVE.md#typ-006-chaintip-struct)
+//! - Verification: [`VERIFICATION.md`](../docs/requirements/domains/storage_types/VERIFICATION.md)
 //!
 //! ## Proof strategy
 //!
 //! - **Layout:** [`ChainTip::to_bytes`](dig_blockstore::ChainTip::to_bytes) must place the raw
 //!   [`chia_protocol::Bytes32`] in `bytes[0..32]` and [`u64::to_le_bytes`] in `bytes[32..40]`
-//!   ([`TYP-006`](../../docs/requirements/domains/storage_types/specs/TYP-006.md) encoding table).
+//!   ([`TYP-006`](../docs/requirements/domains/storage_types/specs/TYP-006.md) encoding table).
 //! - **Round-trip:** For arbitrary tips, [`ChainTip::from_bytes`](dig_blockstore::ChainTip::from_bytes)
 //!   inverts `to_bytes`, proving the codec is lossless on the domain of valid values.
 //! - **Length gate:** Any slice whose length is not exactly 40 must fail decode. The crate’s
-//!   [`dig_blockstore::BlockStoreError`] surface is capped by [`ERR-001`](../../docs/requirements/domains/error_types/specs/ERR-001_blockstore_error_enum.md);
+//!   [`dig_blockstore::BlockStoreError`] surface is capped by [`ERR-001`](../docs/requirements/domains/error_types/specs/ERR-001_blockstore_error_enum.md);
 //!   malformed fixed-width tip bytes therefore map to [`BlockStoreError::Serialization`](dig_blockstore::BlockStoreError::Serialization)
 //!   with a stable message prefix (same idea as the private `load_tip` path in `src/store.rs` when `META_TIP` is corrupt).
 //! - **Known vector:** A fully specified hash (`0xFF..`) and height (`42`) yields a single deterministic
 //!   **40-byte** array, catching accidental endian or offset mistakes.
 //! - **Copy / Eq:** [`ChainTip`] is `Copy` + `Eq`; assigning copies the value so both bindings remain valid,
-//!   which matters for hot-path tip reads without heap allocation ([`TYP-006` design notes](../../docs/requirements/domains/storage_types/specs/TYP-006.md)).
+//!   which matters for hot-path tip reads without heap allocation ([`TYP-006` design notes](../docs/requirements/domains/storage_types/specs/TYP-006.md)).
 
 #![forbid(unsafe_code)]
 

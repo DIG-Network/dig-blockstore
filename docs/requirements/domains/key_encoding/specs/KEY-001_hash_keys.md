@@ -48,4 +48,4 @@ _(Historical spec text referred to `encode_hash_key`; the public API is `hash_ke
 
 ## Expected Test Files
 
-- `tests/unit/key_encoding/test_key_001_hash_keys.rs`
+- `tests/test_key_001_hash_keys.rs`

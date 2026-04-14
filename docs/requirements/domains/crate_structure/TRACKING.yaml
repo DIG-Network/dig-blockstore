@@ -8,7 +8,7 @@ items:
     status: done
     spec_ref: "docs/requirements/domains/crate_structure/specs/STR-001.md"
     tests:
-      - "tests/crate_structure/str_001_cargo_deps.rs"
+      - "tests/str_001_cargo_deps.rs"
     notes: "dig-block via path ../dig-block; dig-epoch stub under stubs/dig-epoch until published"
 
   - id: STR-002
@@ -17,7 +17,7 @@ items:
     status: done
     spec_ref: "docs/requirements/domains/crate_structure/specs/STR-002.md"
     tests:
-      - "tests/crate_structure/str_002_module_hierarchy.rs"
+      - "tests/str_002_module_hierarchy.rs"
     notes: "Placeholder types until STR-004+; crate-root re-exports in STR-003; src/cf_options.rs added for TYP-003 (listed in STR-002 spec tree)"
 
   - id: STR-003
@@ -26,7 +26,7 @@ items:
     status: done
     spec_ref: "docs/requirements/domains/crate_structure/specs/STR-003.md"
     tests:
-      - "tests/crate_structure/str_003_reexports.rs"
+      - "tests/str_003_reexports.rs"
     notes: "hash_key/height_key/epoch_key/metadata_key + decode_epoch_key in encoding; pub use in lib.rs"
 
   - id: STR-004
@@ -35,7 +35,7 @@ items:
     status: done
     spec_ref: "docs/requirements/domains/crate_structure/specs/STR-004.md"
     tests:
-      - "tests/crate_structure/str_004_constructor.rs"
+      - "tests/str_004_constructor.rs"
     notes: "RocksDB open_cf_descriptors / read-only; genesis via WriteBatch; ChainTip TYP-006 encoding"
 
   - id: STR-005
@@ -44,5 +44,5 @@ items:
     status: done
     spec_ref: "docs/requirements/domains/crate_structure/specs/STR-005.md"
     tests:
-      - "tests/crate_structure/str_005_test_infra.rs"
+      - "tests/str_005_test_infra.rs"
     notes: "tests/common/mod.rs helpers; BlockStoreConfig extended toward TYP-008 for test_config()"

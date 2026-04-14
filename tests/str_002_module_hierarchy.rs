@@ -1,9 +1,9 @@
 //! # STR-002 — Module hierarchy matches SPEC §16 layout
 //!
 //! **Normative / spec trace (per `docs/prompt/start.md`)**
-//! - [`STR-002.md`](../../../docs/requirements/domains/crate_structure/specs/STR-002.md) — file tree + acceptance criteria
-//! - [`NORMATIVE.md` (STR-002)](../../../docs/requirements/domains/crate_structure/NORMATIVE.md) — same hierarchy as authoritative bullets
-//! - [`SPEC.md` §16 — Crate boundary](../../../docs/resources/SPEC.md) — dependency direction and concerns owned by this crate
+//! - [`STR-002.md`](../docs/requirements/domains/crate_structure/specs/STR-002.md) — file tree + acceptance criteria
+//! - [`NORMATIVE.md` (STR-002)](../docs/requirements/domains/crate_structure/NORMATIVE.md) — same hierarchy as authoritative bullets
+//! - [`SPEC.md` §16 — Crate boundary](../docs/resources/SPEC.md) — dependency direction and concerns owned by this crate
 //!
 //! ## What this file proves
 //!

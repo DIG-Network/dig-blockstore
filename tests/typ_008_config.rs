@@ -1,24 +1,24 @@
 //! # TYP-008 — [`dig_blockstore::BlockStoreConfig`] defaults and field surface
 //!
 //! **Trace (`docs/prompt/start.md`)**
-//! - Spec + test plan: [`TYP-008.md`](../../docs/requirements/domains/storage_types/specs/TYP-008.md)
-//! - NORMATIVE: [`NORMATIVE.md`](../../docs/requirements/domains/storage_types/NORMATIVE.md#typ-008-blockstoreconfig-struct)
-//! - Verification: [`VERIFICATION.md`](../../docs/requirements/domains/storage_types/VERIFICATION.md)
+//! - Spec + test plan: [`TYP-008.md`](../docs/requirements/domains/storage_types/specs/TYP-008.md)
+//! - NORMATIVE: [`NORMATIVE.md`](../docs/requirements/domains/storage_types/NORMATIVE.md#typ-008-blockstoreconfig-struct)
+//! - Verification: [`VERIFICATION.md`](../docs/requirements/domains/storage_types/VERIFICATION.md)
 //!
 //! ## Proof strategy
 //!
 //! - **Defaults:** Each test maps to a row in the TYP-008 test-plan table, proving [`BlockStoreConfig::default`]
-//!   matches production-oriented values ([`TYP-008` default table](../../docs/requirements/domains/storage_types/specs/TYP-008.md#field-summary)).
-//!   Numeric cache / RocksDB / zstd fields are additionally aligned with [`TYP-002`](../../docs/requirements/domains/storage_types/specs/TYP-002.md)
-//!   via [`dig_blockstore::constants`] inside [`src/config.rs`](../../src/config.rs).
+//!   matches production-oriented values ([`TYP-008` default table](../docs/requirements/domains/storage_types/specs/TYP-008.md#field-summary)).
+//!   Numeric cache / RocksDB / zstd fields are additionally aligned with [`TYP-002`](../docs/requirements/domains/storage_types/specs/TYP-002.md)
+//!   via [`dig_blockstore::constants`] inside [`src/config.rs`](../src/config.rs).
 //! - **Path:** Default directory is relative `data/blockstore` (manual [`Default`] — not `PathBuf::default()`).
 //! - **Extensions:** Beyond the short TYP-008 markdown excerpt, this crate exposes `warm_cache_depth`,
-//!   `write_pipeline_channel_capacity`, and `readahead_size` for [`CAC-006`](../../docs/requirements/domains/caching/specs/CAC-006_cache_warming_on_startup.md),
-//!   [`BLK-008`](../../docs/requirements/domains/block_storage/specs/BLK-008.md), and [`BLK-006`](../../docs/requirements/domains/block_storage/specs/BLK-006.md);
+//!   `write_pipeline_channel_capacity`, and `readahead_size` for [`CAC-006`](../docs/requirements/domains/caching/specs/CAC-006_cache_warming_on_startup.md),
+//!   [`BLK-008`](../docs/requirements/domains/block_storage/specs/BLK-008.md), and [`BLK-006`](../docs/requirements/domains/block_storage/specs/BLK-006.md);
 //!   defaults are asserted so future refactors do not silently change operator-visible behavior.
 //! - **Override / clone:** Structural update and [`Clone`] prove the type is a mutable, copyable config bag without requiring [`dig_blockstore::BlockStore`].
 //!
-//! **Note:** [`STR-005`](../../docs/requirements/domains/crate_structure/specs/STR-005.md) `test_config` intentionally shrinks caches; that does not contradict TYP-008 — it overrides defaults for speed.
+//! **Note:** [`STR-005`](../docs/requirements/domains/crate_structure/specs/STR-005.md) `test_config` intentionally shrinks caches; that does not contradict TYP-008 — it overrides defaults for speed.
 
 #![forbid(unsafe_code)]
 

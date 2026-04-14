@@ -1,18 +1,18 @@
 //! # TYP-002 — Metadata keys (`META_*`), `SCHEMA_VERSION`, and RocksDB default tunables
 //!
 //! **Trace (`docs/prompt/start.md`)**
-//! - [`TYP-002.md`](../../docs/requirements/domains/storage_types/specs/TYP-002.md) — string keys, `SCHEMA_VERSION`, `DEFAULT_*`, `ZSTD_COMPRESSION_LEVEL`
-//! - [`NORMATIVE` TYP-002](../../docs/requirements/domains/storage_types/NORMATIVE.md#typ-002-metadata-keys-and-rocksdb-defaults)
-//! - [`VERIFICATION.md`](../../docs/requirements/domains/storage_types/VERIFICATION.md)
+//! - [`TYP-002.md`](../docs/requirements/domains/storage_types/specs/TYP-002.md) — string keys, `SCHEMA_VERSION`, `DEFAULT_*`, `ZSTD_COMPRESSION_LEVEL`
+//! - [`NORMATIVE` TYP-002](../docs/requirements/domains/storage_types/NORMATIVE.md#typ-002-metadata-keys-and-rocksdb-defaults)
+//! - [`VERIFICATION.md`](../docs/requirements/domains/storage_types/VERIFICATION.md)
 //!
 //! ## What this file proves
 //!
-//! Row-aligned with the TYP-002 test-plan table. Imports use the **crate root** ([`STR-003`](../../docs/requirements/domains/crate_structure/specs/STR-003.md))
+//! Row-aligned with the TYP-002 test-plan table. Imports use the **crate root** ([`STR-003`](../docs/requirements/domains/crate_structure/specs/STR-003.md))
 //! so we exercise the same path application code uses for `CF_METADATA` keys and shared tuning numbers.
 //!
 //! **`BlockStoreConfig::default`** is cross-checked against [`DEFAULT_BLOCK_CACHE_CAPACITY`](dig_blockstore::DEFAULT_BLOCK_CACHE_CAPACITY),
 //! [`DEFAULT_WRITE_BUFFER_SIZE`](dig_blockstore::DEFAULT_WRITE_BUFFER_SIZE), etc., proving [`TYP-002` implementation notes](
-//! ../../docs/requirements/domains/storage_types/specs/TYP-002.md#implementation-notes) (“used by `BlockStoreConfig::default()`”) is satisfied
+//! ../docs/requirements/domains/storage_types/specs/TYP-002.md#implementation-notes) (“used by `BlockStoreConfig::default()`”) is satisfied
 //! for the fields TYP-002 enumerates.
 
 use dig_blockstore::{

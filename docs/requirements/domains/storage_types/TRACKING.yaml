@@ -8,7 +8,7 @@ items:
     status: done
     spec_ref: "docs/requirements/domains/storage_types/specs/TYP-001.md"
     tests:
-      - "tests/storage_types/typ_001_cf_constants.rs"
+      - "tests/typ_001_cf_constants.rs"
     notes: "src/constants.rs CF_* + ALL_COLUMN_FAMILIES; docs/comments aligned to spec key/value semantics"
 
   - id: TYP-002
@@ -17,7 +17,7 @@ items:
     status: done
     spec_ref: "docs/requirements/domains/storage_types/specs/TYP-002.md"
     tests:
-      - "tests/storage_types/typ_002_metadata_keys.rs"
+      - "tests/typ_002_metadata_keys.rs"
     notes: "SCHEMA_VERSION + DEFAULT_* + ZSTD_COMPRESSION_LEVEL in constants.rs; BlockStoreConfig::default + init_genesis wired"
 
   - id: TYP-003
@@ -26,7 +26,7 @@ items:
     status: done
     spec_ref: "docs/requirements/domains/storage_types/specs/TYP-003.md"
     tests:
-      - "tests/storage_types/typ_003_cf_config.rs"
+      - "tests/typ_003_cf_config.rs"
     notes: "src/cf_options.rs + store open/open_readonly; STR-005 test_config enable_blob_db=true for RocksDB option parity on readonly reopen; STR-002 lists cf_options.rs"
 
   - id: TYP-004
@@ -35,7 +35,7 @@ items:
     status: done
     spec_ref: "docs/requirements/domains/storage_types/specs/TYP-004.md"
     tests:
-      - "tests/storage_types/typ_004_block_record.rs"
+      - "tests/typ_004_block_record.rs"
     notes: "src/types/block_record.rs; in_canonical_chain = BlockStatus::is_canonical() (dig-block has no Canonical variant); no serde; block_size 0 from header"
 
   - id: TYP-005
@@ -44,7 +44,7 @@ items:
     status: done
     spec_ref: "docs/requirements/domains/storage_types/specs/TYP-005.md"
     tests:
-      - "tests/storage_types/typ_005_stored_checkpoint.rs"
+      - "tests/typ_005_stored_checkpoint.rs"
     notes: "src/types/stored_checkpoint.rs; chia-bls serde feature; embeds dig-block CKP-001 Checkpoint; encode_bincode helpers; RocksDB CF smoke in typ_005 test"
 
   - id: TYP-006
@@ -53,7 +53,7 @@ items:
     status: done
     spec_ref: "docs/requirements/domains/storage_types/specs/TYP-006.md"
     tests:
-      - "tests/storage_types/typ_006_chain_tip.rs"
+      - "tests/typ_006_chain_tip.rs"
     notes: "src/types/chain_tip.rs; 40-byte META_TIP layout; wrong-length decode -> BlockStoreError::Serialization per ERR-001"
 
   - id: TYP-007
@@ -62,7 +62,7 @@ items:
     status: done
     spec_ref: "docs/requirements/domains/storage_types/specs/TYP-007.md"
     tests:
-      - "tests/storage_types/typ_007_storage_stats.rs"
+      - "tests/typ_007_storage_stats.rs"
     notes: "src/types/storage_stats.rs;8 fields + Default/PartialEq/Eq; BLK-012 will populate from RocksDB"
 
   - id: TYP-008
@@ -71,5 +71,5 @@ items:
     status: done
     spec_ref: "docs/requirements/domains/storage_types/specs/TYP-008.md"
     tests:
-      - "tests/storage_types/typ_008_config.rs"
+      - "tests/typ_008_config.rs"
     notes: "src/config.rs; field path (TYP-008); defaults match TYP-008+TYP-002; warm_cache_depth/write_pipeline_channel_capacity/readahead_size for CAC/BLK precursors"

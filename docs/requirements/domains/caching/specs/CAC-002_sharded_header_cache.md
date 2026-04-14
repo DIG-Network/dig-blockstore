@@ -79,4 +79,4 @@ header_cache: ShardedCache<L2BlockHeader>
 
 ## Expected Test Files
 
-- `tests/unit/caching/test_cac_002_sharded_header_cache.rs`
+- `tests/test_cac_002_sharded_header_cache.rs`

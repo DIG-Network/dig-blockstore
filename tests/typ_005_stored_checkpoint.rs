@@ -1,26 +1,26 @@
 //! # TYP-005 — [`dig_blockstore::StoredCheckpoint`] and `CF_CHECKPOINTS` wire shape
 //!
 //! **Trace (`docs/prompt/start.md`)**
-//! - Spec + test plan: [`TYP-005.md`](../../docs/requirements/domains/storage_types/specs/TYP-005.md)
-//! - NORMATIVE: [`NORMATIVE.md`](../../docs/requirements/domains/storage_types/NORMATIVE.md#typ-005-storedcheckpoint-struct)
-//! - Verification: [`VERIFICATION.md`](../../docs/requirements/domains/storage_types/VERIFICATION.md)
+//! - Spec + test plan: [`TYP-005.md`](../docs/requirements/domains/storage_types/specs/TYP-005.md)
+//! - NORMATIVE: [`NORMATIVE.md`](../docs/requirements/domains/storage_types/NORMATIVE.md#typ-005-storedcheckpoint-struct)
+//! - Verification: [`VERIFICATION.md`](../docs/requirements/domains/storage_types/VERIFICATION.md)
 //!
 //! ## Proof strategy
 //!
 //! - **Field coverage:** Construct [`StoredCheckpoint`] with representative [`dig_block::Checkpoint`],
 //!   [`dig_block::SignerBitmap`], and [`chia_bls`] keys/signatures, then assert each field round-trips
-//!   through [`bincode`] per [`TYP-005`](../../docs/requirements/domains/storage_types/specs/TYP-005.md)
+//!   through [`bincode`] per [`TYP-005`](../docs/requirements/domains/storage_types/specs/TYP-005.md)
 //!   (`CF_CHECKPOINTS` value encoding).
 //! - **Optionals:** Separate tests for `l1_height` / `l1_coin_id` being `None` vs `Some` prove serde
 //!   handles both shapes CKP rows will use before and after L1 confirmation.
 //! - **RocksDB row:** One integration test opens a throwaway DB with the same CF descriptors as
 //!   [`dig_blockstore::cf_options::column_family_descriptors`], writes under [`dig_blockstore::CF_CHECKPOINTS`]
 //!   with [`dig_blockstore::epoch_key`], and reads back — satisfying “stored and retrieved” without
-//!   requiring [`dig_blockstore::BlockStore`] to expose checkpoint APIs yet ([`CKP-001`](../../docs/requirements/domains/checkpoint_storage/specs/CKP-001_put_checkpoint.md) precursor).
+//!   requiring [`dig_blockstore::BlockStore`] to expose checkpoint APIs yet ([`CKP-001`](../docs/requirements/domains/checkpoint_storage/specs/CKP-001_put_checkpoint.md) precursor).
 
 #![forbid(unsafe_code)]
 
-#[path = "../common/mod.rs"]
+#[path = "common/mod.rs"]
 #[allow(dead_code)]
 mod common;
 

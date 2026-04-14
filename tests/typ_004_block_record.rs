@@ -1,9 +1,9 @@
 //! # TYP-004 — [`dig_blockstore::BlockRecord`] and [`BlockRecord::from_header`]
 //!
 //! **Trace (`docs/prompt/start.md`)**
-//! - Spec + test plan: [`TYP-004.md`](../../docs/requirements/domains/storage_types/specs/TYP-004.md)
-//! - NORMATIVE: [`NORMATIVE.md`](../../docs/requirements/domains/storage_types/NORMATIVE.md#typ-004-blockrecord-struct)
-//! - Verification: [`VERIFICATION.md`](../../docs/requirements/domains/storage_types/VERIFICATION.md)
+//! - Spec + test plan: [`TYP-004.md`](../docs/requirements/domains/storage_types/specs/TYP-004.md)
+//! - NORMATIVE: [`NORMATIVE.md`](../docs/requirements/domains/storage_types/NORMATIVE.md#typ-004-blockrecord-struct)
+//! - Verification: [`VERIFICATION.md`](../docs/requirements/domains/storage_types/VERIFICATION.md)
 //!
 //! ## Proof strategy
 //!
@@ -15,11 +15,11 @@
 //! **`in_canonical_chain`:** Current [`dig_block::BlockStatus`] has no `Canonical` variant (ATT-003). The
 //! implementation uses [`BlockStatus::is_canonical`] (`false` only for `Orphaned` / `Rejected`); tests
 //! below encode that contract instead of the obsolete `Canonical` / `Pending` pairing from an older spec
-//! snippet ([`TYP-004.md`](../../docs/requirements/domains/storage_types/specs/TYP-004.md) updated accordingly).
+//! snippet ([`TYP-004.md`](../docs/requirements/domains/storage_types/specs/TYP-004.md) updated accordingly).
 
 #![forbid(unsafe_code)]
 
-#[path = "../common/mod.rs"]
+#[path = "common/mod.rs"]
 #[allow(dead_code)]
 mod common;
 

@@ -35,7 +35,7 @@ After completing a requirement: write tests, verify they pass, update TRACKING.y
 ## Phase 3: Key Encoding
 
 - [x] KEY-001 — Hash keys (32 bytes, raw Bytes32)
-- [ ] KEY-002 — Height keys (8 bytes, big-endian u64, ascending sort)
+- [x] KEY-002 — Height keys (8 bytes, big-endian u64, ascending sort)
 - [ ] KEY-003 — Epoch keys (8 bytes, big-endian u64)
 - [ ] KEY-004 — Metadata keys (variable-length UTF-8)
 

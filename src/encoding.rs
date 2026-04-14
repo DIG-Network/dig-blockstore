@@ -28,10 +28,23 @@ pub fn hash_key(hash: &Bytes32) -> &[u8; 32] {
         .expect("Bytes32 must be exactly 32 bytes (KEY-001)")
 }
 
-/// Encode a chain height as an 8-byte **big-endian** key ([`KEY-002`](../docs/requirements/domains/key_encoding/specs/KEY-002_height_keys.md)).
+/// Encode a chain height as an 8-byte **big-endian** key for [`crate::constants::CF_CANONICAL`] ([`KEY-002`](../docs/requirements/domains/key_encoding/specs/KEY-002_height_keys.md)).
+///
+/// **Sort invariant:** For `a < b`, `height_key(a).as_slice() < height_key(b).as_slice()` in bytewise order, so
+/// RocksDB’s default comparator iterates heights in ascending numeric order (required for range scans and reorg walks).
+///
+/// **Decode:** Use [`decode_height_key`] after reads (symmetric to [`decode_epoch_key`] for checkpoints).
+///
+/// **Fixed width:** Always exactly 8 bytes — no VLQ or length prefix.
 #[must_use]
 pub fn height_key(height: u64) -> [u8; 8] {
     height.to_be_bytes()
+}
+
+/// Decode a height key produced by [`height_key`] ([`KEY-002`](../docs/requirements/domains/key_encoding/specs/KEY-002_height_keys.md)).
+#[must_use]
+pub fn decode_height_key(key: &[u8; 8]) -> u64 {
+    u64::from_be_bytes(*key)
 }
 
 /// Encode an epoch number as an 8-byte **big-endian** key for `CF_CHECKPOINTS` ([`KEY-003`](../docs/requirements/domains/key_encoding/specs/KEY-003_epoch_keys.md)).

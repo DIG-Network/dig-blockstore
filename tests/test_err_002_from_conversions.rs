@@ -1,19 +1,19 @@
 //! # ERR-002 — `From` / `?` ergonomics for RocksDB, bincode, and zstd I/O
 //!
 //! **Trace (`docs/prompt/start.md`)**
-//! - [`ERR-002_error_from_conversions.md`](../../../docs/requirements/domains/error_types/specs/ERR-002_error_from_conversions.md) — mappings, acceptance criteria, test plan
-//! - [`NORMATIVE` ERR-002](../../../docs/requirements/domains/error_types/NORMATIVE.md#err-002-error-from-conversions)
-//! - [`VERIFICATION.md`](../../../docs/requirements/domains/error_types/VERIFICATION.md)
+//! - [`ERR-002_error_from_conversions.md`](../docs/requirements/domains/error_types/specs/ERR-002_error_from_conversions.md) — mappings, acceptance criteria, test plan
+//! - [`NORMATIVE` ERR-002](../docs/requirements/domains/error_types/NORMATIVE.md#err-002-error-from-conversions)
+//! - [`VERIFICATION.md`](../docs/requirements/domains/error_types/VERIFICATION.md)
 //!
 //! ## What this file proves
 //!
 //! | Test plan row | Requirement |
 //! |---------------|-------------|
-//! | RocksDB `.into()` | [`From<rocksdb::Error>`](dig_blockstore::BlockStoreError) via thiserror `#[from]` ([`ERR-002` § RocksDB](../../../docs/requirements/domains/error_types/specs/ERR-002_error_from_conversions.md#rocksdb-error-conversion)). |
+//! | RocksDB `.into()` | [`From<rocksdb::Error>`](dig_blockstore::BlockStoreError) via thiserror `#[from]` ([`ERR-002` § RocksDB](../docs/requirements/domains/error_types/specs/ERR-002_error_from_conversions.md#rocksdb-error-conversion)). |
 //! | Bincode garbage | [`From<bincode::Error>`] → [`BlockStoreError::Serialization`](dig_blockstore::BlockStoreError::Serialization). |
 //! | Zstd garbage | [`BlockStoreError::compression_from_io`](dig_blockstore::BlockStoreError::compression_from_io) → [`Compression`](dig_blockstore::BlockStoreError::Compression) without a conflicting [`From<std::io::Error>`]. |
-//! | `?` smoke | Functions returning `Result<_, BlockStoreError>` compile when using `?` on each source ([`ERR-002` acceptance §4](../../../docs/requirements/domains/error_types/specs/ERR-002_error_from_conversions.md#acceptance-criteria)). |
-//! | Message preservation | `Serialization` / `Compression` strings retain the source [`Display`](std::fmt::Display) text ([`ERR-002` §5](../../../docs/requirements/domains/error_types/specs/ERR-002_error_from_conversions.md#test-plan)). |
+//! | `?` smoke | Functions returning `Result<_, BlockStoreError>` compile when using `?` on each source ([`ERR-002` acceptance §4](../docs/requirements/domains/error_types/specs/ERR-002_error_from_conversions.md#acceptance-criteria)). |
+//! | Message preservation | `Serialization` / `Compression` strings retain the source [`Display`](std::fmt::Display) text ([`ERR-002` §5](../docs/requirements/domains/error_types/specs/ERR-002_error_from_conversions.md#test-plan)). |
 
 use std::fmt::Write as _;
 
@@ -81,7 +81,7 @@ fn test_zstd_io_error_maps_to_compression() {
     }
 }
 
-/// Each helper uses `?` once so the type checker proves [`ERR-002`](../../../docs/requirements/domains/error_types/specs/ERR-002_error_from_conversions.md) ergonomics.
+/// Each helper uses `?` once so the type checker proves [`ERR-002`](../docs/requirements/domains/error_types/specs/ERR-002_error_from_conversions.md) ergonomics.
 mod question_mark_smoke {
     use dig_blockstore::BlockStoreError;
     use rocksdb::{Options, DB};

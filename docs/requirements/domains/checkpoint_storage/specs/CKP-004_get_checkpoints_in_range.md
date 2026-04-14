@@ -85,4 +85,4 @@ pub fn get_checkpoints_in_range(
 
 ## Expected Test Files
 
-- `tests/unit/checkpoint_storage/test_ckp_004_get_checkpoints_in_range.rs`
+- `tests/test_ckp_004_get_checkpoints_in_range.rs`

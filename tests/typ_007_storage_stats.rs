@@ -1,21 +1,21 @@
 //! # TYP-007 — [`dig_blockstore::StorageStats`] aggregate metrics snapshot
 //!
 //! **Trace (`docs/prompt/start.md`)**
-//! - Spec + test plan: [`TYP-007.md`](../../docs/requirements/domains/storage_types/specs/TYP-007.md)
-//! - NORMATIVE: [`NORMATIVE.md`](../../docs/requirements/domains/storage_types/NORMATIVE.md#typ-007-storagestats-struct)
-//! - Verification: [`VERIFICATION.md`](../../docs/requirements/domains/storage_types/VERIFICATION.md)
+//! - Spec + test plan: [`TYP-007.md`](../docs/requirements/domains/storage_types/specs/TYP-007.md)
+//! - NORMATIVE: [`NORMATIVE.md`](../docs/requirements/domains/storage_types/NORMATIVE.md#typ-007-storagestats-struct)
+//! - Verification: [`VERIFICATION.md`](../docs/requirements/domains/storage_types/VERIFICATION.md)
 //!
 //! ## Proof strategy
 //!
 //! - **Defaults:** [`StorageStats::default`](dig_blockstore::StorageStats) must match the TYP-007 default
 //!   table (all counts `0`, both optional heights `None`, `total_size_bytes == 0`). That is the shape
-//!   [`BlockStore::stats`](../../docs/requirements/domains/block_storage/specs/BLK-012.md) will fill in later (BLK-012).
+//!   [`BlockStore::stats`](../docs/requirements/domains/block_storage/specs/BLK-012.md) will fill in later (BLK-012).
 //! - **Field surface:** All eight public fields from SPEC §3.5 / NORMATIVE are readable and writable in isolation,
-//!   proving the type is a **pure data carrier** with no hidden RocksDB coupling ([`TYP-007` acceptance](../../docs/requirements/domains/storage_types/specs/TYP-007.md)).
+//!   proving the type is a **pure data carrier** with no hidden RocksDB coupling ([`TYP-007` acceptance](../docs/requirements/domains/storage_types/specs/TYP-007.md)).
 //! - **Derivations:** [`Clone`], [`Debug`], [`PartialEq`], [`Eq`] behave as expected for diagnostics structs
 //!   (copy for cheap snapshots, equality for tests, `format!("{:?}")` for logging).
 //!
-//! **Semantic links:** populated stats are specified for [`BLK-012`](../../docs/requirements/domains/block_storage/specs/BLK-012.md);
+//! **Semantic links:** populated stats are specified for [`BLK-012`](../docs/requirements/domains/block_storage/specs/BLK-012.md);
 //! this requirement only defines the **shape** of the snapshot, not how counts are computed.
 
 #![forbid(unsafe_code)]

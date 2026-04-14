@@ -1,9 +1,9 @@
 //! # STR-001 — `Cargo.toml` dependency contract
 //!
 //! **Normative sources**
-//! - [`docs/requirements/domains/crate_structure/specs/STR-001.md`](../../../docs/requirements/domains/crate_structure/specs/STR-001.md)
-//! - [`docs/requirements/domains/crate_structure/NORMATIVE.md`](../../../docs/requirements/domains/crate_structure/NORMATIVE.md)
-//! - [`docs/resources/SPEC.md`](../../../docs/resources/SPEC.md) §1.2 (crate dependency table)
+//! - [`docs/requirements/domains/crate_structure/specs/STR-001.md`](../docs/requirements/domains/crate_structure/specs/STR-001.md)
+//! - [`docs/requirements/domains/crate_structure/NORMATIVE.md`](../docs/requirements/domains/crate_structure/NORMATIVE.md)
+//! - [`docs/resources/SPEC.md`](../docs/resources/SPEC.md) §1.2 (crate dependency table)
 //!
 //! ## What this test file proves
 //!

@@ -9,18 +9,17 @@ Height keys used in `CF_CANONICAL` MUST be `u64` values encoded as 8-byte big-en
 The key encoding function for height-based column families converts a `u64` height to its 8-byte big-endian representation:
 
 ```rust
-/// Encode a block height as a RocksDB key for CF_CANONICAL.
-/// Returns an 8-byte big-endian representation ensuring lexicographic
-/// order matches numeric order.
-pub fn encode_height_key(height: u64) -> [u8; 8] {
+/// Public API: `dig_blockstore::height_key` / `dig_blockstore::decode_height_key` in `src/encoding.rs`.
+pub fn height_key(height: u64) -> [u8; 8] {
     height.to_be_bytes()
 }
 
-/// Decode a height key back to a u64.
 pub fn decode_height_key(key: &[u8; 8]) -> u64 {
     u64::from_be_bytes(*key)
 }
 ```
+
+_(Historical prose used `encode_height_key`; the shipped name is `height_key`, re-exported at the crate root per STR-003.)_
 
 - The key MUST be exactly 8 bytes in length.
 - Big-endian encoding guarantees that for any two heights `a < b`, the byte representation of `a` is lexicographically less than that of `b`.
@@ -39,10 +38,10 @@ pub fn decode_height_key(key: &[u8; 8]) -> u64 {
 
 ## Acceptance Criteria
 
-1. `encode_height_key` returns exactly 8 bytes for any `u64` input.
-2. Big-endian encoding: `encode_height_key(1)` produces `[0, 0, 0, 0, 0, 0, 0, 1]`.
-3. Sort order: for all `a < b`, `encode_height_key(a) < encode_height_key(b)` under bytewise comparison.
-4. Round-trip: `decode_height_key(&encode_height_key(h)) == h` for any `u64` h.
+1. `height_key` returns exactly 8 bytes for any `u64` input.
+2. Big-endian encoding: `height_key(1)` produces `[0, 0, 0, 0, 0, 0, 0, 1]`.
+3. Sort order: for all `a < b`, `height_key(a).as_slice() < height_key(b).as_slice()` under bytewise comparison.
+4. Round-trip: `decode_height_key(&height_key(h)) == h` for any `u64` h.
 
 ## Implementation Notes
 
@@ -52,13 +51,13 @@ pub fn decode_height_key(key: &[u8; 8]) -> u64 {
 
 ## Test Plan
 
-1. **Zero height**: `encode_height_key(0)` produces 8 zero bytes.
-2. **Height 1**: `encode_height_key(1)` produces `[0,0,0,0,0,0,0,1]`.
-3. **Max height**: `encode_height_key(u64::MAX)` produces 8 `0xFF` bytes.
+1. **Zero height**: `height_key(0)` produces 8 zero bytes.
+2. **Height 1**: `height_key(1)` produces `[0,0,0,0,0,0,0,1]`.
+3. **Max height**: `height_key(u64::MAX)` produces 8 `0xFF` bytes.
 4. **Sort order**: Encode heights `[0, 1, 2, 255, 256, 1000, u64::MAX]`, verify bytewise sort matches numeric sort.
 5. **Round-trip**: Encode and decode a range of heights, assert equality.
 6. **Negative test**: Verify that little-endian encoding would break sort order (document why big-endian is required).
 
 ## Expected Test Files
 
-- `tests/unit/key_encoding/test_key_002_height_keys.rs`
+- `tests/test_key_002_height_keys.rs`

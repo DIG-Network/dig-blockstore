@@ -1,14 +1,14 @@
 //! Shared test helpers for integration tests across requirement domains.
 //!
-//! **Requirement:** [`STR-005`](../../docs/requirements/domains/crate_structure/specs/STR-005.md) —
+//! **Requirement:** [`STR-005`](../docs/requirements/domains/crate_structure/specs/STR-005.md) —
 //! temporary RocksDB directories, deterministic [`dig_block::L2Block`] fixtures, small
 //! [`dig_blockstore::BlockStoreConfig`], and linear fake chains.
 //!
 //! ## How integration tests include this module
 //!
 //! Rust treats each `[[test]]` binary as a separate crate root. Submodules are resolved relative to the
-//! test file, so tests under `tests/crate_structure/` pull this tree in with:
-//! `#[path = "../common/mod.rs"] mod common;`
+//! test file, so flat `tests/*.rs` crates pull this tree in with:
+//! `#[path = "common/mod.rs"] mod common;`
 //!
 //! **Rationale:** Avoid duplicating genesis/block builders in every domain’s test file; keep
 //! determinism explicit (same inputs → same [`L2Block::hash`]) so storage and canonical tests share one
@@ -25,7 +25,7 @@ use tempfile::TempDir;
 /// Creates a temporary directory for a RocksDB-backed [`dig_blockstore::BlockStore`] that is deleted when
 /// the returned [`TempDir`] guard is dropped.
 ///
-/// **Proof:** [`STR-005`](../../docs/requirements/domains/crate_structure/specs/STR-005.md) “Temporary
+/// **Proof:** [`STR-005`](../docs/requirements/domains/crate_structure/specs/STR-005.md) “Temporary
 /// RocksDB Directory Helper”; cleanup is [`tempfile`](https://docs.rs/tempfile/)’s `Drop` on [`TempDir`].
 ///
 /// # Returns
@@ -40,7 +40,7 @@ pub fn temp_blockstore_dir() -> (TempDir, PathBuf) {
 
 /// Builds a deterministic [`L2BlockHeader`] from `height`, `parent_hash`, and fixed sentinel roots.
 ///
-/// **Spec:** [`STR-005`](../../docs/requirements/domains/crate_structure/specs/STR-005.md) “Test Block
+/// **Spec:** [`STR-005`](../docs/requirements/domains/crate_structure/specs/STR-005.md) “Test Block
 /// Helper” — timestamp scales with height (`height * 10`); other fields use stable protocol constants
 /// ([`EMPTY_ROOT`](dig_block::constants::EMPTY_ROOT), [`ZERO_HASH`](dig_block::constants::ZERO_HASH)) so
 /// the header hash is a pure function of `(height, parent_hash)` for test purposes.
@@ -83,14 +83,14 @@ pub fn test_block(height: u64, parent_hash: Bytes32) -> L2Block {
 
 /// [`BlockStoreConfig`](dig_blockstore::BlockStoreConfig) tuned for fast, isolated unit tests.
 ///
-/// **Normative:** [`STR-005`](../../docs/requirements/domains/crate_structure/specs/STR-005.md) — small
+/// **Normative:** [`STR-005`](../docs/requirements/domains/crate_structure/specs/STR-005.md) — small
 /// in-memory cache capacities, reduced RocksDB budgets, **disabled block compression** (`compress_blocks: false`)
 /// for cheap genesis / round-trip tests; BlobDB stays **`true`** (aligned with
-/// [`BlockStoreConfig::default`]) so [`TYP-003`](../../docs/requirements/domains/storage_types/specs/TYP-003.md)
+/// [`BlockStoreConfig::default`]) so [`TYP-003`](../docs/requirements/domains/storage_types/specs/TYP-003.md)
 /// CF options match [`dig_blockstore::BlockStore::open_readonly`]’s default-derived descriptors.
 ///
 /// **Related:** Production defaults remain [`BlockStoreConfig::default`](dig_blockstore::BlockStoreConfig::default)
-/// ([`TYP-008`](../../docs/requirements/domains/storage_types/specs/TYP-008.md)).
+/// ([`TYP-008`](../docs/requirements/domains/storage_types/specs/TYP-008.md)).
 pub fn test_config(db_path: PathBuf) -> BlockStoreConfig {
     BlockStoreConfig {
         path: db_path,
@@ -119,7 +119,7 @@ pub fn test_config(db_path: PathBuf) -> BlockStoreConfig {
 /// Builds `n` blocks `[genesis … block_{n-1}]` where each block’s parent hash is the previous block’s
 /// [`L2Block::hash`].
 ///
-/// **Algorithm:** [`STR-005`](../../docs/requirements/domains/crate_structure/specs/STR-005.md) “Chain
+/// **Algorithm:** [`STR-005`](../docs/requirements/domains/crate_structure/specs/STR-005.md) “Chain
 /// Builder” — seed parent with [`Bytes32::default`] (all-zero hash / genesis parent sentinel), then link.
 pub fn build_chain(n: usize) -> Vec<L2Block> {
     let genesis_parent = Bytes32::default();

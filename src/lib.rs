@@ -47,7 +47,9 @@ pub use constants::{
     META_GENESIS_HASH, META_MIN_HEIGHT, META_SCHEMA_VERSION, META_TIP, META_ZSTD_DICT,
     SCHEMA_VERSION, ZSTD_COMPRESSION_LEVEL,
 };
-pub use encoding::{decode_epoch_key, epoch_key, hash_key, height_key, metadata_key};
+pub use encoding::{
+    decode_epoch_key, decode_height_key, epoch_key, hash_key, height_key, metadata_key,
+};
 pub use error::{
     BlockStoreError, ERR_INIT_GENESIS_ALREADY_INITIALIZED, ERR_INIT_GENESIS_READ_ONLY,
     ERR_OPEN_READONLY_PATH_MISSING_PREFIX,

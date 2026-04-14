@@ -1,16 +1,16 @@
 //! # KEY-001 — Raw 32-byte hash keys for `CF_BLOCKS` / `CF_HEADERS` / `CF_ATTESTED`
 //!
 //! **Trace (`docs/prompt/start.md`)**
-//! - Spec: [`KEY-001_hash_keys.md`](../../../docs/requirements/domains/key_encoding/specs/KEY-001_hash_keys.md)
-//! - NORMATIVE: [`NORMATIVE.md` (KEY-001)](../../../docs/requirements/domains/key_encoding/NORMATIVE.md#key-001-hash-keys-32-bytes)
-//! - Verification: [`VERIFICATION.md`](../../../docs/requirements/domains/key_encoding/VERIFICATION.md)
+//! - Spec: [`KEY-001_hash_keys.md`](../docs/requirements/domains/key_encoding/specs/KEY-001_hash_keys.md)
+//! - NORMATIVE: [`NORMATIVE.md` (KEY-001)](../docs/requirements/domains/key_encoding/NORMATIVE.md#key-001-hash-keys-32-bytes)
+//! - Verification: [`VERIFICATION.md`](../docs/requirements/domains/key_encoding/VERIFICATION.md)
 //!
 //! ## Proof strategy
 //!
-//! - **Identity encoding:** [`dig_blockstore::hash_key`] (crate-root re-export per [`STR-003`](../../../docs/requirements/domains/crate_structure/specs/STR-003.md))
+//! - **Identity encoding:** [`dig_blockstore::hash_key`] (crate-root re-export per [`STR-003`](../docs/requirements/domains/crate_structure/specs/STR-003.md))
 //!   must expose the [`chia_protocol::Bytes32`] payload as exactly **32 bytes** with **no prefix, length field, or
-//!   suffix** ([`KEY-001`](../../../docs/requirements/domains/key_encoding/specs/KEY-001_hash_keys.md) summary).
-//! - **Column families:** The same function is used for all hash-keyed families ([`TYP-001`](../../../docs/requirements/domains/storage_types/specs/TYP-001.md));
+//!   suffix** ([`KEY-001`](../docs/requirements/domains/key_encoding/specs/KEY-001_hash_keys.md) summary).
+//! - **Column families:** The same function is used for all hash-keyed families ([`TYP-001`](../docs/requirements/domains/storage_types/specs/TYP-001.md));
 //!   this file proves the **encoding contract**; `store.rs` proves wiring.
 //! - **Round-trip:** Rebuilding [`Bytes32`] from the key octets recovers the original value, so RocksDB round-trips
 //!   hashes without a secondary mapping.

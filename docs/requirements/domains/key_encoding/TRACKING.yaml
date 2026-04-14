@@ -5,13 +5,13 @@ items:
     title: "Hash Keys (32 bytes)"
     status: done
     spec_section: "4.1"
-    notes: "encoding::hash_key + tests/unit/key_encoding/test_key_001_hash_keys.rs; raw [u8;32] for CF_BLOCKS/HEADERS/ATTESTED"
+    notes: "encoding::hash_key + tests/test_key_001_hash_keys.rs; raw [u8;32] for CF_BLOCKS/HEADERS/ATTESTED"
 
   - id: KEY-002
     title: "Height Keys (8 bytes, big-endian)"
-    status: gap
+    status: done
     spec_section: "4.2"
-    notes: "Height keys for CF_CANONICAL must be u64 big-endian 8-byte encoding"
+    notes: "height_key + decode_height_key; tests/test_key_002_height_keys.rs"
 
   - id: KEY-003
     title: "Epoch Keys (8 bytes, big-endian)"

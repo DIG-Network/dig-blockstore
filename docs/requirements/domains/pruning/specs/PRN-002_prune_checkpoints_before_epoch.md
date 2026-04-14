@@ -76,4 +76,4 @@ pub fn prune_checkpoints_before_epoch(&self, epoch: u64) -> Result<usize>
 
 ## Expected Test Files
 
-- `tests/unit/pruning/test_prn_002_prune_checkpoints_before_epoch.rs`
+- `tests/test_prn_002_prune_checkpoints_before_epoch.rs`

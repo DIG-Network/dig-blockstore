@@ -1,9 +1,9 @@
 //! # TYP-003 — Per–column-family RocksDB configuration
 //!
 //! **Trace (`docs/prompt/start.md`)**
-//! - Spec + test plan: [`TYP-003.md`](../../docs/requirements/domains/storage_types/specs/TYP-003.md)
-//! - NORMATIVE: [`NORMATIVE.md`](../../docs/requirements/domains/storage_types/NORMATIVE.md) §TYP-003
-//! - Verification row: [`VERIFICATION.md`](../../docs/requirements/domains/storage_types/VERIFICATION.md)
+//! - Spec + test plan: [`TYP-003.md`](../docs/requirements/domains/storage_types/specs/TYP-003.md)
+//! - NORMATIVE: [`NORMATIVE.md`](../docs/requirements/domains/storage_types/NORMATIVE.md) §TYP-003
+//! - Verification row: [`VERIFICATION.md`](../docs/requirements/domains/storage_types/VERIFICATION.md)
 //!
 //! ## Proof strategy
 //!
@@ -13,17 +13,17 @@
 //! on-disk `OPTIONS-*` snapshots RocksDB writes under the DB directory (see
 //! [RocksDB options file](https://github.com/facebook/rocksdb/wiki/RocksDB-Options-File)).
 //!
-//! Each test maps to an acceptance row or test-plan entry in [`TYP-003.md`](../../docs/requirements/domains/storage_types/specs/TYP-003.md):
+//! Each test maps to an acceptance row or test-plan entry in [`TYP-003.md`](../docs/requirements/domains/storage_types/specs/TYP-003.md):
 //! we assert **observable** `CFOptions` fields (`compaction_style`, `filter_policy`, `compression`,
 //! `enable_blob_files`, `min_blob_size`, `target_file_size_base`) for the relevant column family name.
 //!
 //! **Important:** Read-only reopen tests rely on STR-005 `test_config` using the same BlobDB flag as
-//! [`BlockStoreConfig::default`] so CF descriptors stay compatible ([`store.rs`](../../src/store.rs)
+//! [`BlockStoreConfig::default`] so CF descriptors stay compatible ([`store.rs`](../src/store.rs)
 //! `open_readonly` path).
 
 #![forbid(unsafe_code)]
 
-#[path = "../common/mod.rs"]
+#[path = "common/mod.rs"]
 #[allow(dead_code)]
 mod common;
 
@@ -130,7 +130,7 @@ fn table_kv_for_cf(db_dir: &Path, cf: &str) -> HashMap<String, String> {
 
 #[test]
 fn test_blocks_cf_universal_compaction() {
-    // **Acceptance:** CF_BLOCKS uses Universal compaction ([`TYP-003.md`](../../docs/requirements/domains/storage_types/specs/TYP-003.md)).
+    // **Acceptance:** CF_BLOCKS uses Universal compaction ([`TYP-003.md`](../docs/requirements/domains/storage_types/specs/TYP-003.md)).
 
     let (_dir, path) = open_temp_store(true);
     let kv = kv_for_cf(&path, CF_BLOCKS);
@@ -144,7 +144,7 @@ fn test_blocks_cf_universal_compaction() {
 
 #[test]
 fn test_blocks_cf_blobdb_enabled_when_config_true() {
-    // **Acceptance / test plan:** BlobDB active for CF_BLOCKS when `config.enable_blob_db` ([`TYP-003`](../../docs/requirements/domains/storage_types/specs/TYP-003.md)).
+    // **Acceptance / test plan:** BlobDB active for CF_BLOCKS when `config.enable_blob_db` ([`TYP-003`](../docs/requirements/domains/storage_types/specs/TYP-003.md)).
 
     let (_dir, path) = open_temp_store(true);
     let kv = kv_for_cf(&path, CF_BLOCKS);
@@ -183,7 +183,7 @@ fn test_blocks_cf_blobdb_off_when_config_false() {
 
 #[test]
 fn test_blocks_cf_does_not_set_bloom_filter_policy() {
-    // **Acceptance:** CF_BLOCKS does not install a table filter / bloom ([`TYP-003`](../../docs/requirements/domains/storage_types/specs/TYP-003.md)).
+    // **Acceptance:** CF_BLOCKS does not install a table filter / bloom ([`TYP-003`](../docs/requirements/domains/storage_types/specs/TYP-003.md)).
 
     let (_dir, path) = open_temp_store(true);
     let tkv = table_kv_for_cf(&path, CF_BLOCKS);

@@ -14,6 +14,8 @@ Upstream: [nxpatterns/gitnexus](https://github.com/nxpatterns/gitnexus). From **
 
 ## Before changing code
 
+**On every coding session before modifying `src/` or `tests/`:** run **`npx gitnexus status`** (and **`npx gitnexus analyze`** if needed) so impact tools are trustworthy. If the CLI fails, say so and still review call sites manually.
+
 For edits that touch a **named symbol** (function, type, method, or exported value):
 
 1. **`gitnexus_impact`** on that symbol (`direction: upstream` unless exploring callees).

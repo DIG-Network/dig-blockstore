@@ -99,4 +99,4 @@ pub enum BlockStoreError {
 
 ## Expected Test Files
 
-- `tests/unit/error_types/test_err_003_display_messages.rs`
+- `tests/test_err_003_display_messages.rs`

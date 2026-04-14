@@ -92,4 +92,4 @@ The record cache MUST be updated in the following operations:
 
 ## Expected Test Files
 
-- `tests/unit/caching/test_cac_003_block_record_cache.rs`
+- `tests/test_cac_003_block_record_cache.rs`

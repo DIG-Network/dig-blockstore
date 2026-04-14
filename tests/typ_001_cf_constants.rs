@@ -1,14 +1,14 @@
 //! # TYP-001 — RocksDB column family name constants (`CF_*`)
 //!
 //! **Trace (`docs/prompt/start.md`)**
-//! - [`TYP-001.md`](../../docs/requirements/domains/storage_types/specs/TYP-001.md) — six `pub const &str`, string values, acceptance criteria
-//! - [`NORMATIVE` storage_types](../../docs/requirements/domains/storage_types/NORMATIVE.md) — CF partition contract
-//! - [`SPEC.md` §2.1](../../docs/resources/SPEC.md) — authoritative storage layout reference cited by TYP-001
+//! - [`TYP-001.md`](../docs/requirements/domains/storage_types/specs/TYP-001.md) — six `pub const &str`, string values, acceptance criteria
+//! - [`NORMATIVE` storage_types](../docs/requirements/domains/storage_types/NORMATIVE.md) — CF partition contract
+//! - [`SPEC.md` §2.1](../docs/resources/SPEC.md) — authoritative storage layout reference cited by TYP-001
 //!
 //! ## What this file proves
 //!
 //! These integration tests mirror the TYP-001 test-plan table row-for-row. They import symbols from the
-//! **crate root** ([`STR-003`](../../docs/requirements/domains/crate_structure/specs/STR-003.md)) so we verify
+//! **crate root** ([`STR-003`](../docs/requirements/domains/crate_structure/specs/STR-003.md)) so we verify
 //! the same names consumers use (`use dig_blockstore::CF_BLOCKS`). Exact string equality guards against
 //! accidental renames that would **orphan on-disk databases** (TYP-001: names MUST NOT change post-deploy).
 //!

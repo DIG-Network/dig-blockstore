@@ -1,9 +1,9 @@
 //! # STR-003 — Crate-root public re-exports
 //!
 //! **Trace (per `docs/prompt/start.md`)**
-//! - [`STR-003.md`](../../../docs/requirements/domains/crate_structure/specs/STR-003.md) — required `pub use` list and consumer `use dig_blockstore::{…}` example
-//! - [`NORMATIVE.md` (STR-003)](../../../docs/requirements/domains/crate_structure/NORMATIVE.md) — same symbol set
-//! - [`SPEC.md` §15](../../../docs/resources/SPEC.md) — public API layout
+//! - [`STR-003.md`](../docs/requirements/domains/crate_structure/specs/STR-003.md) — required `pub use` list and consumer `use dig_blockstore::{…}` example
+//! - [`NORMATIVE.md` (STR-003)](../docs/requirements/domains/crate_structure/NORMATIVE.md) — same symbol set
+//! - [`SPEC.md` §15](../docs/resources/SPEC.md) — public API layout
 //!
 //! ## What this file proves
 //!
@@ -15,8 +15,8 @@
 //!
 //! 2. **`test_cf_constants_values` / `test_meta_constants_values`** — Matches the STR-003 test
 //!    plan rows for CF/META string values, proving re-exports point at the same definitions as
-//!    [`TYP-001`](../../../docs/requirements/domains/storage_types/specs/TYP-001.md) /
-//!    [`TYP-002`](../../../docs/requirements/domains/storage_types/specs/TYP-002.md).
+//!    [`TYP-001`](../docs/requirements/domains/storage_types/specs/TYP-001.md) /
+//!    [`TYP-002`](../docs/requirements/domains/storage_types/specs/TYP-002.md).
 //!
 //! 3. **`test_encoding_functions_round_trip_epoch`** — Exercises [`epoch_key`] /
 //!    [`decode_epoch_key`] re-exported from the crate root, covering KEY-003 behavior expected
@@ -25,10 +25,10 @@
 use chia_protocol::Bytes32;
 
 use dig_blockstore::{
-    decode_epoch_key, epoch_key, hash_key, height_key, metadata_key, BlockRecord, BlockStore,
-    BlockStoreConfig, BlockStoreError, ChainTip, StorageStats, StoredCheckpoint, CF_ATTESTED,
-    CF_BLOCKS, CF_CANONICAL, CF_CHECKPOINTS, CF_HEADERS, CF_METADATA, META_GENESIS_HASH,
-    META_MIN_HEIGHT, META_SCHEMA_VERSION, META_TIP, META_ZSTD_DICT,
+    decode_epoch_key, decode_height_key, epoch_key, hash_key, height_key, metadata_key,
+    BlockRecord, BlockStore, BlockStoreConfig, BlockStoreError, ChainTip, StorageStats,
+    StoredCheckpoint, CF_ATTESTED, CF_BLOCKS, CF_CANONICAL, CF_CHECKPOINTS, CF_HEADERS,
+    CF_METADATA, META_GENESIS_HASH, META_MIN_HEIGHT, META_SCHEMA_VERSION, META_TIP, META_ZSTD_DICT,
 };
 
 #[test]
@@ -41,6 +41,7 @@ fn test_all_reexports_importable_from_crate_root() {
     let _ = core::mem::size_of::<StorageStats>();
     let _ = core::mem::size_of::<BlockStoreError>();
     let _ = height_key(0);
+    let _ = decode_height_key(&height_key(7));
     let _ = epoch_key(1);
     let _ = decode_epoch_key(&epoch_key(42));
     let _ = metadata_key(META_TIP);

@@ -1,9 +1,9 @@
 //! # ERR-003 — `Display` / `to_string()` quality for every `BlockStoreError` variant
 //!
 //! **Trace (`docs/prompt/start.md`)**
-//! - [`ERR-003_error_display_messages.md`](../../../docs/requirements/domains/error_types/specs/ERR-003_error_display_messages.md) — `#[error]` contract, acceptance table, test plan
-//! - [`NORMATIVE` ERR-003](../../../docs/requirements/domains/error_types/NORMATIVE.md#err-003-error-display-messages) — hashes hex-encoded, struct fields inlined, static text for unit variants
-//! - [`VERIFICATION.md`](../../../docs/requirements/domains/error_types/VERIFICATION.md)
+//! - [`ERR-003_error_display_messages.md`](../docs/requirements/domains/error_types/specs/ERR-003_error_display_messages.md) — `#[error]` contract, acceptance table, test plan
+//! - [`NORMATIVE` ERR-003](../docs/requirements/domains/error_types/NORMATIVE.md#err-003-error-display-messages) — hashes hex-encoded, struct fields inlined, static text for unit variants
+//! - [`VERIFICATION.md`](../docs/requirements/domains/error_types/VERIFICATION.md)
 //!
 //! ## What this file proves
 //!
