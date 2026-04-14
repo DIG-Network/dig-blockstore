@@ -47,13 +47,28 @@ pub fn decode_height_key(key: &[u8; 8]) -> u64 {
     u64::from_be_bytes(*key)
 }
 
-/// Encode an epoch number as an 8-byte **big-endian** key for `CF_CHECKPOINTS` ([`KEY-003`](../docs/requirements/domains/key_encoding/specs/KEY-003_epoch_keys.md)).
+/// Encode an epoch number as an 8-byte **big-endian** key for [`crate::constants::CF_CHECKPOINTS`]
+/// ([`KEY-003`](../docs/requirements/domains/key_encoding/specs/KEY-003_epoch_keys.md),
+/// [`NORMATIVE` §KEY-003](../docs/requirements/domains/key_encoding/NORMATIVE.md#key-003-epoch-keys-8-bytes-big-endian)).
+///
+/// **Wire shape:** Identical octets to [`height_key`] for the same `u64` ([`KEY-002`](../docs/requirements/domains/key_encoding/specs/KEY-002_height_keys.md));
+/// the separate name documents call-site intent (checkpoint epochs vs canonical heights) and leaves room for future newtypes.
+///
+/// **Sort invariant:** For `a < b`, `epoch_key(a).as_slice() < epoch_key(b).as_slice()` in bytewise order, matching RocksDB’s
+/// default comparator — required for epoch-range scans (e.g. future [`CKP-004`](../docs/requirements/domains/checkpoint_storage/specs/CKP-004_get_checkpoints_in_range.md)).
+///
+/// **Decode:** Use [`decode_epoch_key`] after reads (symmetric to [`decode_height_key`] for canonical heights).
+///
+/// **Fixed width:** Always exactly 8 bytes — no VLQ or length prefix.
 #[must_use]
 pub fn epoch_key(epoch: u64) -> [u8; 8] {
     epoch.to_be_bytes()
 }
 
-/// Decode an epoch key produced by [`epoch_key`].
+/// Decode an epoch key produced by [`epoch_key`] ([`KEY-003`](../docs/requirements/domains/key_encoding/specs/KEY-003_epoch_keys.md)).
+///
+/// **Contract:** Input MUST be exactly the 8 bytes returned by [`epoch_key`] for some `u64`; this is the inverse of
+/// `u64::to_be_bytes` / `u64::from_be_bytes` and matches [`decode_height_key`]’s numeric interpretation.
 #[must_use]
 pub fn decode_epoch_key(key: &[u8; 8]) -> u64 {
     u64::from_be_bytes(*key)

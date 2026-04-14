@@ -15,9 +15,9 @@ items:
 
   - id: KEY-003
     title: "Epoch Keys (8 bytes, big-endian)"
-    status: gap
+    status: done
     spec_section: "4.3"
-    notes: "Epoch keys for CF_CHECKPOINTS must be u64 big-endian 8-byte encoding"
+    notes: "encoding::epoch_key + decode_epoch_key; tests/test_key_003_epoch_keys.rs; CF_CHECKPOINTS u64 BE (same wire as height_key)"
 
   - id: KEY-004
     title: "Metadata Keys (variable UTF-8)"

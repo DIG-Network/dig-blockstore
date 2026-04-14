@@ -6,13 +6,13 @@ Epoch keys used in `CF_CHECKPOINTS` MUST be `u64` values encoded as 8-byte big-e
 
 ## Specification
 
-The key encoding function for epoch-based column families converts a `u64` epoch to its 8-byte big-endian representation:
+The key encoding function for epoch-based column families converts a `u64` epoch to its 8-byte big-endian representation. The public API mirrors KEY-002 naming (`height_key` / `decode_height_key`): **`epoch_key`** / **`decode_epoch_key`**.
 
 ```rust
 /// Encode an epoch number as a RocksDB key for CF_CHECKPOINTS.
 /// Returns an 8-byte big-endian representation ensuring lexicographic
 /// order matches numeric order.
-pub fn encode_epoch_key(epoch: u64) -> [u8; 8] {
+pub fn epoch_key(epoch: u64) -> [u8; 8] {
     epoch.to_be_bytes()
 }
 
@@ -29,10 +29,10 @@ pub fn decode_epoch_key(key: &[u8; 8]) -> u64 {
 
 ## Acceptance Criteria
 
-1. `encode_epoch_key` returns exactly 8 bytes for any `u64` input.
-2. Big-endian encoding: `encode_epoch_key(1)` produces `[0, 0, 0, 0, 0, 0, 0, 1]`.
-3. Sort order: for all `a < b`, `encode_epoch_key(a) < encode_epoch_key(b)` under bytewise comparison.
-4. Round-trip: `decode_epoch_key(&encode_epoch_key(e)) == e` for any `u64` e.
+1. `epoch_key` returns exactly 8 bytes for any `u64` input.
+2. Big-endian encoding: `epoch_key(1)` produces `[0, 0, 0, 0, 0, 0, 0, 1]`.
+3. Sort order: for all `a < b`, `epoch_key(a) < epoch_key(b)` under bytewise comparison.
+4. Round-trip: `decode_epoch_key(&epoch_key(e)) == e` for any `u64` e.
 
 ## Implementation Notes
 
@@ -43,12 +43,12 @@ pub fn decode_epoch_key(key: &[u8; 8]) -> u64 {
 
 ## Test Plan
 
-1. **Zero epoch**: `encode_epoch_key(0)` produces 8 zero bytes.
-2. **Epoch 1**: `encode_epoch_key(1)` produces `[0,0,0,0,0,0,0,1]`.
-3. **Max epoch**: `encode_epoch_key(u64::MAX)` produces 8 `0xFF` bytes.
+1. **Zero epoch**: `epoch_key(0)` produces 8 zero bytes.
+2. **Epoch 1**: `epoch_key(1)` produces `[0,0,0,0,0,0,0,1]`.
+3. **Max epoch**: `epoch_key(u64::MAX)` produces 8 `0xFF` bytes.
 4. **Sort order**: Encode epochs `[0, 1, 10, 100, 1000, u64::MAX]`, verify bytewise sort matches numeric sort.
 5. **Round-trip**: Encode and decode a range of epochs, assert equality.
-6. **Consistency with height encoding**: For any value `v`, verify `encode_epoch_key(v) == encode_height_key(v)` (same encoding, different semantics).
+6. **Consistency with height encoding**: For any value `v`, verify `epoch_key(v) == height_key(v)` (same encoding, different semantics).
 
 ## Expected Test Files
 

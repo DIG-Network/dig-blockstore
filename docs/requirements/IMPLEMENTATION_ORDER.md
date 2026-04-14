@@ -36,7 +36,7 @@ After completing a requirement: write tests, verify they pass, update TRACKING.y
 
 - [x] KEY-001 — Hash keys (32 bytes, raw Bytes32)
 - [x] KEY-002 — Height keys (8 bytes, big-endian u64, ascending sort)
-- [ ] KEY-003 — Epoch keys (8 bytes, big-endian u64)
+- [x] KEY-003 — Epoch keys (8 bytes, big-endian u64)
 - [ ] KEY-004 — Metadata keys (variable-length UTF-8)
 
 ## Phase 4: Serialization & Compression
