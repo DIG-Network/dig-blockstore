@@ -91,3 +91,7 @@ path = "tests/unit/error_types/test_err_002_from_conversions.rs"
 [[test]]
 name = "test_err_003_display_messages"
 path = "tests/unit/error_types/test_err_003_display_messages.rs"
+
+[[test]]
+name = "typ_001_cf_constants"
+path = "tests/storage_types/typ_001_cf_constants.rs"

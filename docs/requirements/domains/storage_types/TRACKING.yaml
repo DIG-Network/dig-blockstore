@@ -5,10 +5,11 @@ items:
   - id: TYP-001
     section: "Constants"
     summary: "Column Family Constants"
-    status: gap
+    status: done
     spec_ref: "docs/requirements/domains/storage_types/specs/TYP-001.md"
-    tests: []
-    notes: ""
+    tests:
+      - "tests/storage_types/typ_001_cf_constants.rs"
+    notes: "src/constants.rs CF_* + ALL_COLUMN_FAMILIES; docs/comments aligned to spec key/value semantics"
 
   - id: TYP-002
     section: "Constants"
