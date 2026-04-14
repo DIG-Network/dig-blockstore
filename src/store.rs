@@ -120,12 +120,11 @@ impl BlockStore {
                 block.height()
             )));
         }
-        let block_bytes = bincode::serialize(block)
-            .map_err(|e| BlockStoreError::Serialization(format!("bincode block: {e}")))?;
+        // [`ERR-002`](../docs/requirements/domains/error_types/specs/ERR-002_error_from_conversions.md): `?` via [`From<bincode::Error>`] / zstd [`std::io::Error`] → [`BlockStoreError::compression_from_io`].
+        let block_bytes = bincode::serialize(block)?;
         let compressed = zstd::encode_all(block_bytes.as_slice(), 3)
-            .map_err(|e| BlockStoreError::Compression(e.to_string()))?;
-        let header_bytes = bincode::serialize(&block.header)
-            .map_err(|e| BlockStoreError::Serialization(format!("bincode header: {e}")))?;
+            .map_err(BlockStoreError::compression_from_io)?;
+        let header_bytes = bincode::serialize(&block.header)?;
         let tip = ChainTip { hash, height: 0 };
         let mut batch = WriteBatch::default();
         let cf_b = self.cf(CF_BLOCKS)?;
@@ -159,10 +158,9 @@ impl BlockStore {
         let Some(raw) = self.db.get_cf(cf, hash_key(hash).as_slice())? else {
             return Ok(None);
         };
-        let decompressed = zstd::decode_all(raw.as_slice())
-            .map_err(|e| BlockStoreError::Compression(e.to_string()))?;
-        let block: L2Block = bincode::deserialize(&decompressed)
-            .map_err(|e| BlockStoreError::Serialization(format!("bincode block decode: {e}")))?;
+        let decompressed =
+            zstd::decode_all(raw.as_slice()).map_err(BlockStoreError::compression_from_io)?;
+        let block: L2Block = bincode::deserialize(&decompressed)?;
         Ok(Some(block))
     }
 

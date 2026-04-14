@@ -83,3 +83,7 @@ path = "tests/crate_structure/str_005_test_infra.rs"
 [[test]]
 name = "test_err_001_enum_variants"
 path = "tests/unit/error_types/test_err_001_enum_variants.rs"
+
+[[test]]
+name = "test_err_002_from_conversions"
+path = "tests/unit/error_types/test_err_002_from_conversions.rs"

@@ -9,9 +9,9 @@ items:
 
   - id: ERR-002
     title: "Error From Conversions"
-    status: gap
+    status: done
     spec_section: "12"
-    notes: "From<rocksdb::Error>, bincode to Serialization, zstd to Compression"
+    notes: "From<rocksdb::Error> (thiserror); From<bincode::Error>; compression_from_io for zstd io::Error; tests/unit/error_types/test_err_002_from_conversions.rs"
 
   - id: ERR-003
     title: "Error Display Messages"

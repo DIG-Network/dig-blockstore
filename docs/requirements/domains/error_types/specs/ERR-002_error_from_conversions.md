@@ -62,14 +62,14 @@ fn decompress_block(data: &[u8]) -> Result<Vec<u8>, BlockStoreError> {
 
 ## Acceptance Criteria
 
-1. `From<rocksdb::Error>` is implemented: `let e: BlockStoreError = rocksdb_err.into();` compiles and produces `RocksDb` variant.
-2. Bincode errors can be mapped to `Serialization`: the string message from the original error is preserved.
-3. Zstd `io::Error` values can be mapped to `Compression`: the string message from the original error is preserved.
-4. The `?` operator works in functions returning `Result<T, BlockStoreError>` for all three error sources.
+1. [x] `From<rocksdb::Error>` is implemented: `let e: BlockStoreError = rocksdb_err.into();` compiles and produces `RocksDb` variant.
+2. [x] Bincode errors can be mapped to `Serialization`: the string message from the original error is preserved.
+3. [x] Zstd `io::Error` values can be mapped to `Compression`: the string message from the original error is preserved.
+4. [x] The `?` operator works in functions returning `Result<T, BlockStoreError>` for all three error sources.
 
 ## Implementation Notes
 
-- Only `rocksdb::Error` uses `#[from]` because it is a dedicated 1:1 mapping. Bincode and zstd errors are mapped via `.map_err()` because multiple `std::io::Error` sources could be ambiguous with a blanket `From` impl.
+- `rocksdb::Error` uses `#[from]` (thiserror). `bincode::Error` uses [`From<bincode::Error>`](https://doc.rust-lang.org/std/convert/trait.From.html) so `?` works without boilerplate. Zstd helpers return [`std::io::Error`]; we use [`BlockStoreError::compression_from_io`] instead of `From<std::io::Error>` so filesystem I/O paths stay unambiguous ([`ERR-001`](ERR-001_blockstoreerror_enum.md) interim `Serialization` for `create_dir_all`, etc.).
 - Converting to `String` loses the original error chain but simplifies the error type (no generic parameters or trait objects needed).
 - The `Serialization` variant covers both bincode serialization and deserialization failures.
 - The `Compression` variant covers both zstd compression and decompression failures.

@@ -3,6 +3,10 @@
 //! **Requirements**
 //! - [`ERR-001`](../docs/requirements/domains/error_types/specs/ERR-001_blockstoreerror_enum.md) — thirteen
 //!   variants, `thiserror::Error` + `Debug`.
+//! - [`ERR-002`](../docs/requirements/domains/error_types/specs/ERR-002_error_from_conversions.md) —
+//!   `From<rocksdb::Error>` (via `#[from]`), [`From<bincode::Error>`] for [`Serialization`](BlockStoreError::Serialization),
+//!   and explicit zstd / [`std::io::Error`] → [`Compression`](BlockStoreError::Compression) mapping
+//!   ([`BlockStoreError::compression_from_io`]).
 //! - Normative: [`ERR domain NORMATIVE`](../docs/requirements/domains/error_types/NORMATIVE.md#err-001-blockstoreerror-enum).
 //! - SPEC: [`SPEC.md` §12](../docs/resources/SPEC.md) (error taxonomy; ERR-001 adds `EmptyReorgChain` and
 //!   `PipelineClosed` beyond the SPEC snippet).
@@ -94,4 +98,29 @@ pub enum BlockStoreError {
     /// Async write pipeline channel is closed ([`BLK-008`](../docs/requirements/domains/block_storage/specs/BLK-008.md)).
     #[error("write pipeline closed")]
     PipelineClosed,
+}
+
+impl BlockStoreError {
+    /// Maps an [`std::io::Error`] produced by **zstd** compress/decompress helpers ([`zstd::encode_all`],
+    /// [`zstd::decode_all`], …) into [`BlockStoreError::Compression`].
+    ///
+    /// **Rationale ([`ERR-002`](../docs/requirements/domains/error_types/specs/ERR-002_error_from_conversions.md)):**
+    /// We intentionally **do not** implement [`From<std::io::Error>`] on [`BlockStoreError`]. Plain
+    /// filesystem I/O (for example `create_dir_all`) is surfaced as [`Serialization`](BlockStoreError::Serialization)
+    /// today ([`ERR-001`](../docs/requirements/domains/error_types/specs/ERR-001_blockstoreerror_enum.md) interim mapping);
+    /// a blanket `From<io::Error>` would make those sites ambiguous or route the wrong variant. Callers
+    /// that know the `io::Error` came from zstd should use this helper with [`Result::map_err`] or a closure.
+    #[must_use]
+    pub fn compression_from_io(err: std::io::Error) -> Self {
+        Self::Compression(err.to_string())
+    }
+}
+
+impl From<bincode::Error> for BlockStoreError {
+    /// Bincode encode/decode failures map one-to-one onto [`BlockStoreError::Serialization`] ([`ERR-002`](../docs/requirements/domains/error_types/specs/ERR-002_error_from_conversions.md)).
+    ///
+    /// **Note:** [`std::io::Error`] is **not** covered here — use [`BlockStoreError::compression_from_io`] for zstd I/O.
+    fn from(err: bincode::Error) -> Self {
+        Self::Serialization(err.to_string())
+    }
 }
