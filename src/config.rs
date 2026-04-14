@@ -1,32 +1,30 @@
-//! `BlockStoreConfig` — paths, cache sizes, RocksDB tuning hooks.
+//! [`BlockStoreConfig`] — paths, cache sizes, RocksDB tuning, pipeline, and pruning hooks.
 //!
-//! **Requirements**
-//! - [`STR-002`](../docs/requirements/domains/crate_structure/specs/STR-002.md),
-//!   [`STR-004`](../docs/requirements/domains/crate_structure/specs/STR-004.md),
-//!   [`STR-005`](../docs/requirements/domains/crate_structure/specs/STR-005.md) (test helper field set)
-//! - Default tunables: [`TYP-002`](../docs/requirements/domains/storage_types/specs/TYP-002.md) (`DEFAULT_*`, [`ZSTD_COMPRESSION_LEVEL`](crate::constants::ZSTD_COMPRESSION_LEVEL))
-//! - Target field set / defaults: [`TYP-008`](../docs/requirements/domains/storage_types/specs/TYP-008.md)
+//! **Requirements trace**
+//! - [`TYP-008`](../../docs/requirements/domains/storage_types/specs/TYP-008.md) — field set, production defaults, manual [`Default`] (non-empty [`PathBuf`](std::path::PathBuf))
+//! - [`NORMATIVE` TYP-008](../../docs/requirements/domains/storage_types/NORMATIVE.md#typ-008-blockstoreconfig-struct)
+//! - [`STR-002`](../../docs/requirements/domains/crate_structure/specs/STR-002.md), [`STR-004`](../../docs/requirements/domains/crate_structure/specs/STR-004.md), [`STR-005`](../../docs/requirements/domains/crate_structure/specs/STR-005.md) (`test_config` overrides)
+//! - Shared numeric tunables: [`TYP-002`](../../docs/requirements/domains/storage_types/specs/TYP-002.md) via [`crate::constants`] (`DEFAULT_*`, [`ZSTD_COMPRESSION_LEVEL`](crate::constants::ZSTD_COMPRESSION_LEVEL))
 //!
-//! ## Naming (`db_path` vs `path`)
+//! ## Defaults and `Default` impl
 //!
-//! The authoritative storage spec ([`TYP-008`](../docs/requirements/domains/storage_types/specs/TYP-008.md))
-//! names this field `path`. This crate historically exposed **`db_path`** at the Rust boundary; we keep that
-//! identifier so [`crate::store::BlockStore::open`](crate::store::BlockStore::open) call sites stay stable.
-//! Semantically it is the RocksDB directory root (same as SPEC §3.6 / TYP-008 `path`).
+//! [`Default::default`] follows TYP-008 for the **core** knobs (path, caches, RocksDB, zstd, pipeline flags,
+//! pruning flags). Numeric write-buffer / block-cache / cache capacities reuse [`crate::constants`] so
+//! TYP-002 and TYP-008 stay numerically identical ([`tests/storage_types/typ_002_metadata_keys.rs`](../../tests/storage_types/typ_002_metadata_keys.rs)).
 //!
-//! ## Defaults vs TYP-008
+//! **Why manual `Default`:** `#[derive(Default)]` would set `path` to an empty [`PathBuf`]; the spec requires a
+//! conventional relative layout (`data/blockstore`) suitable for local dev and examples.
 //!
-//! Numeric defaults align with [`TYP-008`](../docs/requirements/domains/storage_types/specs/TYP-008.md)
-//! where applicable. [`warm_cache_on_open`](BlockStoreConfig::warm_cache_on_open) remains **`false`** in
-//! [`Default`] until cache warming is fully integrated across tests (STR-004 already overrides when needed);
-//! TYP-008 lists `true` as the production-oriented default—see tracking for TYP-008 completion.
+//! ## Extension fields (beyond TYP-008’s core table)
 //!
-//! **Rationale:** `BlockStore::open` applies `db_path`, warm-cache flags, depth, and (via [`crate::cf_options`])
-//! per–column-family RocksDB options from [`TYP-003`](../docs/requirements/domains/storage_types/specs/TYP-003.md);
-//! remaining fields are API-complete toward [`TYP-008`](../docs/requirements/domains/storage_types/specs/TYP-008.md) / BLK-008.
+//! The crate also carries forward-looking fields wired by [`crate::store::BlockStore::open`] and future BLK/CAC work:
 //!
-//! **Defaults:** Numeric tuning aligned with [`TYP-002`](../docs/requirements/domains/storage_types/specs/TYP-002.md)
-//! via [`crate::constants`] (`DEFAULT_*`, [`ZSTD_COMPRESSION_LEVEL`](crate::constants::ZSTD_COMPRESSION_LEVEL)).
+//! - **`warm_cache_depth`** — how many trailing canonical heights to touch when [`warm_cache_on_open`] is true ([`CAC-006`](../../docs/requirements/domains/caching/specs/CAC-006_cache_warming_on_startup.md)).
+//! - **`write_pipeline_channel_capacity`** — bounded queue depth for [`BLK-008`](../../docs/requirements/domains/block_storage/specs/BLK-008.md).
+//! - **`readahead_size`** — sequential read hint ([`BLK-006`](../../docs/requirements/domains/block_storage/specs/BLK-006.md)).
+//!
+//! These are **not** duplicated in the short TYP-008 markdown table but are part of the public Rust API and are
+//! covered by [`tests/storage_types/typ_008_config.rs`](../../tests/storage_types/typ_008_config.rs).
 
 use std::path::PathBuf;
 
@@ -37,13 +35,15 @@ use crate::constants::{
 
 /// Configuration for opening or creating a [`crate::store::BlockStore`].
 ///
-/// **See:** [`STR-005`](../docs/requirements/domains/crate_structure/specs/STR-005.md) `test_config`,
-/// [`TYP-008`](../docs/requirements/domains/storage_types/specs/TYP-008.md) for the full intended surface.
+/// **Construction:** Use [`BlockStoreConfig::default`] and override fields, [`std::default::Default::default`]
+/// with struct update syntax (`BlockStoreConfig { path: my_dir, ..Default::default() }`), or [`STR-005`](../../docs/requirements/domains/crate_structure/specs/STR-005.md) `test_config` for tiny test tunables.
+///
+/// **Validation:** [`crate::store::BlockStore::open`] should eventually enforce `cache_shards` is a power of two ([`TYP-008`](../../docs/requirements/domains/storage_types/specs/TYP-008.md) implementation notes); today callers should follow that invariant.
 #[derive(Debug, Clone)]
 pub struct BlockStoreConfig {
-    // --- Storage path (TYP-008 `path`; see module docs) ---
-    /// Root directory for the RocksDB database files.
-    pub db_path: PathBuf,
+    // --- Storage path (TYP-008) ---
+    /// Root directory for the RocksDB database files (TYP-008 `path`).
+    pub path: PathBuf,
 
     // --- In-memory blockstore caches (CAC-001 / CAC-002 precursors) ---
     /// Max blocks retained in the sharded block cache.
@@ -52,13 +52,13 @@ pub struct BlockStoreConfig {
     /// Max headers retained in the sharded header cache.
     pub header_cache_capacity: usize,
 
-    /// Shard count for block/header caches; must be a power of two when enforced ([`TYP-008`](../docs/requirements/domains/storage_types/specs/TYP-008.md)).
+    /// Shard count for block/header caches; must be a power of two when enforced ([`TYP-008`](../../docs/requirements/domains/storage_types/specs/TYP-008.md)).
     pub cache_shards: usize,
 
-    /// When true, [`crate::store::BlockStore::open`] preloads recent canonical blocks ([`STR-004`](../docs/requirements/domains/crate_structure/specs/STR-004.md), [`CAC-006`](../docs/requirements/domains/caching/specs/CAC-006_cache_warming_on_startup.md)).
+    /// When true, [`crate::store::BlockStore::open`] preloads recent canonical blocks ([`STR-004`](../../docs/requirements/domains/crate_structure/specs/STR-004.md), [`CAC-006`](../../docs/requirements/domains/caching/specs/CAC-006_cache_warming_on_startup.md)).
     pub warm_cache_on_open: bool,
 
-    /// Trailing heights (inclusive) to touch when warming, starting from tip ([`CAC-006`](../docs/requirements/domains/caching/specs/CAC-006_cache_warming_on_startup.md)).
+    /// Trailing heights (inclusive) to touch when warming, starting from tip ([`CAC-006`](../../docs/requirements/domains/caching/specs/CAC-006_cache_warming_on_startup.md)).
     pub warm_cache_depth: u64,
 
     // --- RocksDB tuning (TYP-002 / TYP-003 precursors) ---
@@ -71,16 +71,16 @@ pub struct BlockStoreConfig {
     /// `max_open_files` passed to RocksDB options.
     pub max_open_files: i32,
 
-    /// When true, enable BlobDB-style large-value handling for block bodies ([`TYP-003`](../docs/requirements/domains/storage_types/specs/TYP-003.md)).
+    /// When true, enable BlobDB-style large-value handling for block bodies ([`TYP-003`](../../docs/requirements/domains/storage_types/specs/TYP-003.md)).
     pub enable_blob_db: bool,
 
-    /// When true, store compressed block payloads ([`SER-001`](../docs/requirements/domains/serialization/specs/SER-001.md)); tests often disable for simplicity ([`STR-005`](../docs/requirements/domains/crate_structure/specs/STR-005.md)).
+    /// When true, store compressed block payloads ([`SER-001`](../../docs/requirements/domains/serialization/specs/SER-001.md)); tests often disable for simplicity ([`STR-005`](../../docs/requirements/domains/crate_structure/specs/STR-005.md)).
     pub compress_blocks: bool,
 
     /// Zstd level for block compression when `compress_blocks` is true.
     pub compression_level: i32,
 
-    /// Whether to use a trained zstd dictionary ([`SER-005`](../docs/requirements/domains/serialization/specs/SER-005.md)).
+    /// Whether to use a trained zstd dictionary ([`SER-005`](../../docs/requirements/domains/serialization/specs/SER-005.md)).
     pub use_compression_dict: bool,
 
     // --- Write pipeline (BLK-008 precursor) ---
@@ -90,17 +90,17 @@ pub struct BlockStoreConfig {
     /// Max wait before flushing a partial pipeline batch (milliseconds).
     pub write_pipeline_flush_ms: u64,
 
-    /// Bounded async channel capacity feeding the write pipeline.
+    /// Bounded async channel capacity feeding the write pipeline ([`BLK-008`](../../docs/requirements/domains/block_storage/specs/BLK-008.md)).
     pub write_pipeline_channel_capacity: usize,
 
     /// When true, sync the WAL after each write (durability vs throughput).
     pub sync_writes: bool,
 
-    /// Hint for sequential readahead ([`BLK-006`](../docs/requirements/domains/block_storage/specs/BLK-006.md)).
+    /// Hint for sequential readahead ([`BLK-006`](../../docs/requirements/domains/block_storage/specs/BLK-006.md)).
     pub readahead_size: usize,
 
     // --- Pruning (PRN-003 / PRN-004 precursors) ---
-    /// Register compaction-time pruning when true ([`PRN-003`](../docs/requirements/domains/pruning/specs/PRN-003_compaction_filter.md)).
+    /// Register compaction-time pruning when true ([`PRN-003`](../../docs/requirements/domains/pruning/specs/PRN-003_compaction_filter.md)).
     pub enable_compaction_pruning: bool,
 
     /// Optional floor height below which compaction may drop data; `None` disables.
@@ -110,11 +110,11 @@ pub struct BlockStoreConfig {
 impl Default for BlockStoreConfig {
     fn default() -> Self {
         Self {
-            db_path: PathBuf::from("dig_blockstore_data"),
+            path: PathBuf::from("data/blockstore"),
             block_cache_capacity: DEFAULT_BLOCK_CACHE_CAPACITY,
             header_cache_capacity: DEFAULT_HEADER_CACHE_CAPACITY,
             cache_shards: 16,
-            warm_cache_on_open: false,
+            warm_cache_on_open: true,
             warm_cache_depth: 64,
             write_buffer_size: DEFAULT_WRITE_BUFFER_SIZE,
             block_cache_size: DEFAULT_BLOCK_CACHE_SIZE,

@@ -100,7 +100,7 @@ fn test_cf_constants_are_public_at_crate_root() {
     // Compile-time proof: `use dig_blockstore::CF_*` above; runtime smoke that store still opens with these names.
     let dir = tempfile::tempdir().expect("tempdir");
     let cfg = dig_blockstore::BlockStoreConfig {
-        db_path: dir.path().to_path_buf(),
+        path: dir.path().to_path_buf(),
         ..Default::default()
     };
     let _store = BlockStore::open(cfg).expect("open uses ALL_COLUMN_FAMILIES / same strings");

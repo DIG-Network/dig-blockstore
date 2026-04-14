@@ -8,7 +8,7 @@
 //! - [`BlockStore::open_readonly`](crate::store::BlockStore::open_readonly) must pass **matching**
 //!   descriptors for an existing DB; we reuse the same builders with
 //!   [`BlockStoreConfig::default`](crate::config::BlockStoreConfig::default) plus the caller’s
-//!   `db_path` ([`STR-004`](../docs/requirements/domains/crate_structure/specs/STR-004.md)), so
+//!   `path` ([`STR-004`](../docs/requirements/domains/crate_structure/specs/STR-004.md), [`TYP-008`](../docs/requirements/domains/storage_types/specs/TYP-008.md)), so
 //!   STR-005 `tests/common/mod.rs` `test_config` **keeps `enable_blob_db` aligned** with
 //!   [`BlockStoreConfig::default`] when tests call [`BlockStore::open_readonly`](crate::store::BlockStore::open_readonly)
 //!   on the same directory (RocksDB validates CF options on reopen).

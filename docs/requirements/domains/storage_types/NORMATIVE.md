@@ -163,11 +163,12 @@ The binary encoding **MUST** be exactly 40 bytes: `hash` (32 bytes) concatenated
 
 `BlockStoreConfig` **MUST** contain the following fields with the specified default values:
 
-- `path: PathBuf` &mdash; (no default, required)
+- `path: PathBuf` &mdash; default `"data/blockstore"` ([`TYP-008`](specs/TYP-008.md) manual [`Default`])
 - `block_cache_capacity: usize` &mdash; default `1000`
 - `header_cache_capacity: usize` &mdash; default `2000`
 - `cache_shards: usize` &mdash; default `16`
 - `warm_cache_on_open: bool` &mdash; default `true`
+- `warm_cache_depth: u64` &mdash; default `64` (cache warming depth; [`CAC-006`](../caching/specs/CAC-006_cache_warming_on_startup.md))
 - `write_buffer_size: usize` &mdash; default `67_108_864` (64 MB)
 - `block_cache_size: usize` &mdash; default `134_217_728` (128 MB)
 - `max_open_files: i32` &mdash; default `1000`
@@ -177,7 +178,9 @@ The binary encoding **MUST** be exactly 40 bytes: `hash` (32 bytes) concatenated
 - `use_compression_dict: bool` &mdash; default `true`
 - `write_pipeline_batch_size: usize` &mdash; default `64`
 - `write_pipeline_flush_ms: u64` &mdash; default `100`
+- `write_pipeline_channel_capacity: usize` &mdash; default `256` ([`BLK-008`](../block_storage/specs/BLK-008.md))
 - `sync_writes: bool` &mdash; default `false`
+- `readahead_size: usize` &mdash; default `2_097_152` ([`BLK-006`](../block_storage/specs/BLK-006.md))
 - `enable_compaction_pruning: bool` &mdash; default `false`
 - `min_retained_height: Option<u64>` &mdash; default `None`
 

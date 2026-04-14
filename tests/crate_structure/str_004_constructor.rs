@@ -55,7 +55,7 @@ fn read_metadata_raw(path: &Path, key: &str) -> Option<Vec<u8>> {
 fn test_open_creates_new_db() {
     let dir = TempDir::new().unwrap();
     let cfg = BlockStoreConfig {
-        db_path: dir.path().to_path_buf(),
+        path: dir.path().to_path_buf(),
         ..Default::default()
     };
     let _store = BlockStore::open(cfg).unwrap();
@@ -69,7 +69,7 @@ fn test_open_creates_new_db() {
 fn test_open_creates_all_cfs() {
     let dir = TempDir::new().unwrap();
     let cfg = BlockStoreConfig {
-        db_path: dir.path().to_path_buf(),
+        path: dir.path().to_path_buf(),
         ..Default::default()
     };
     drop(BlockStore::open(cfg).unwrap());
@@ -90,14 +90,14 @@ fn test_open_reopens_existing_db() {
     let h = block.hash();
     {
         let cfg = BlockStoreConfig {
-            db_path: path.clone(),
+            path: path.clone(),
             ..Default::default()
         };
         let store = BlockStore::open(cfg).unwrap();
         store.init_genesis(&block).unwrap();
     }
     let cfg = BlockStoreConfig {
-        db_path: path.clone(),
+        path: path.clone(),
         ..Default::default()
     };
     let store = BlockStore::open(cfg).unwrap();
@@ -116,14 +116,14 @@ fn test_open_loads_existing_tip() {
     };
     {
         let store = BlockStore::open(BlockStoreConfig {
-            db_path: path.clone(),
+            path: path.clone(),
             ..Default::default()
         })
         .unwrap();
         store.init_genesis(&block).unwrap();
     }
     let store = BlockStore::open(BlockStoreConfig {
-        db_path: path,
+        path,
         ..Default::default()
     })
     .unwrap();
@@ -137,14 +137,14 @@ fn test_open_warms_cache() {
     let block = sample_genesis_block();
     {
         let store = BlockStore::open(BlockStoreConfig {
-            db_path: path.clone(),
+            path: path.clone(),
             ..Default::default()
         })
         .unwrap();
         store.init_genesis(&block).unwrap();
     }
     let store = BlockStore::open(BlockStoreConfig {
-        db_path: path,
+        path,
         warm_cache_on_open: true,
         warm_cache_depth: 8,
         ..Default::default()
@@ -164,7 +164,7 @@ fn test_open_readonly_existing() {
     let h = block.hash();
     {
         let store = BlockStore::open(BlockStoreConfig {
-            db_path: path.clone(),
+            path: path.clone(),
             ..Default::default()
         })
         .unwrap();
@@ -200,7 +200,7 @@ fn test_open_readonly_prevents_writes() {
     let block = sample_genesis_block();
     {
         let store = BlockStore::open(BlockStoreConfig {
-            db_path: path.clone(),
+            path: path.clone(),
             ..Default::default()
         })
         .unwrap();
@@ -220,7 +220,7 @@ fn test_init_genesis_stores_block() {
     let block = sample_genesis_block();
     let h = block.hash();
     let store = BlockStore::open(BlockStoreConfig {
-        db_path: dir.path().to_path_buf(),
+        path: dir.path().to_path_buf(),
         ..Default::default()
     })
     .unwrap();
@@ -234,7 +234,7 @@ fn test_init_genesis_sets_tip() {
     let dir = TempDir::new().unwrap();
     let block = sample_genesis_block();
     let store = BlockStore::open(BlockStoreConfig {
-        db_path: dir.path().to_path_buf(),
+        path: dir.path().to_path_buf(),
         ..Default::default()
     })
     .unwrap();
@@ -256,7 +256,7 @@ fn test_init_genesis_records_hash() {
     let gh = block.hash();
     {
         let store = BlockStore::open(BlockStoreConfig {
-            db_path: path.to_path_buf(),
+            path: path.to_path_buf(),
             ..Default::default()
         })
         .unwrap();
@@ -271,7 +271,7 @@ fn test_init_genesis_fails_if_initialized() {
     let dir = TempDir::new().unwrap();
     let block = sample_genesis_block();
     let store = BlockStore::open(BlockStoreConfig {
-        db_path: dir.path().to_path_buf(),
+        path: dir.path().to_path_buf(),
         ..Default::default()
     })
     .unwrap();
@@ -289,7 +289,7 @@ fn test_init_genesis_writes_use_single_writebatch() {
     // This test documents that contract; regression would require white-box inspection or fault injection.
     let dir = TempDir::new().unwrap();
     let store = BlockStore::open(BlockStoreConfig {
-        db_path: dir.path().to_path_buf(),
+        path: dir.path().to_path_buf(),
         ..Default::default()
     })
     .unwrap();

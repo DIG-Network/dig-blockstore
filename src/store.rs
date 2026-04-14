@@ -38,21 +38,21 @@ pub struct BlockStore {
 }
 
 impl BlockStore {
-    /// Open or create a store at `config.db_path` with all column families ([`STR-004`](../docs/requirements/domains/crate_structure/specs/STR-004.md)).
+    /// Open or create a store at `config.path` with all column families ([`STR-004`](../docs/requirements/domains/crate_structure/specs/STR-004.md), [`TYP-008`](../docs/requirements/domains/storage_types/specs/TYP-008.md)).
     pub fn open(config: BlockStoreConfig) -> Result<Self, BlockStoreError> {
         // ERR-001 has no `Io` variant; surface directory creation failures as [`BlockStoreError::Serialization`]
         // until the taxonomy adds filesystem errors ([`ERR-001`](../docs/requirements/domains/error_types/specs/ERR-001_blockstoreerror_enum.md)).
-        std::fs::create_dir_all(&config.db_path).map_err(|e| {
+        std::fs::create_dir_all(&config.path).map_err(|e| {
             BlockStoreError::Serialization(format!(
                 "filesystem error creating database directory {}: {e}",
-                config.db_path.display()
+                config.path.display()
             ))
         })?;
         let mut opts = Options::default();
         opts.create_if_missing(true);
         opts.create_missing_column_families(true);
         let cfs = cf_options::column_family_descriptors(&config);
-        let db = DB::open_cf_descriptors(&opts, &config.db_path, cfs)?;
+        let db = DB::open_cf_descriptors(&opts, &config.path, cfs)?;
         let db = Arc::new(db);
         let tip = load_tip(&db)?;
         let warm = if config.warm_cache_on_open {
@@ -81,7 +81,7 @@ impl BlockStore {
         // CF option structs must match how the DB was created; tests use STR-005 `test_config`, which
         // mirrors [`BlockStoreConfig::default`] for `enable_blob_db` ([`TYP-003`](../../docs/requirements/domains/storage_types/specs/TYP-003.md)).
         let readonly_cfg = BlockStoreConfig {
-            db_path: path.to_path_buf(),
+            path: path.to_path_buf(),
             ..BlockStoreConfig::default()
         };
         let cfs = cf_options::column_family_descriptors(&readonly_cfg);

@@ -68,7 +68,8 @@ items:
   - id: TYP-008
     section: "Configuration"
     summary: "BlockStoreConfig Struct"
-    status: gap
+    status: done
     spec_ref: "docs/requirements/domains/storage_types/specs/TYP-008.md"
-    tests: []
-    notes: ""
+    tests:
+      - "tests/storage_types/typ_008_config.rs"
+    notes: "src/config.rs; field path (TYP-008); defaults match TYP-008+TYP-002; warm_cache_depth/write_pipeline_channel_capacity/readahead_size for CAC/BLK precursors"

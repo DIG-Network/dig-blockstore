@@ -125,7 +125,7 @@ fn test_stored_checkpoint_debug() {
 fn test_stored_checkpoint_cf_checkpoints_roundtrip() {
     let (_dir, path) = common::temp_blockstore_dir();
     let cfg = BlockStoreConfig {
-        db_path: path.clone(),
+        path: path.clone(),
         ..common::test_config(path.clone())
     };
 

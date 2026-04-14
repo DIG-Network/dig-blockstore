@@ -31,7 +31,7 @@ use tempfile::TempDir;
 /// # Returns
 ///
 /// `(guard, path)` — keep the guard alive for the lifetime of the store; assign `path` to
-/// [`BlockStoreConfig`](dig_blockstore::BlockStoreConfig) `db_path` when calling [`dig_blockstore::BlockStore::open`].
+/// [`BlockStoreConfig`](dig_blockstore::BlockStoreConfig) `path` when calling [`dig_blockstore::BlockStore::open`].
 pub fn temp_blockstore_dir() -> (TempDir, PathBuf) {
     let dir = tempfile::tempdir().expect("tempfile::tempdir should succeed in tests");
     let path = dir.path().to_path_buf();
@@ -93,7 +93,7 @@ pub fn test_block(height: u64, parent_hash: Bytes32) -> L2Block {
 /// ([`TYP-008`](../../docs/requirements/domains/storage_types/specs/TYP-008.md)).
 pub fn test_config(db_path: PathBuf) -> BlockStoreConfig {
     BlockStoreConfig {
-        db_path,
+        path: db_path,
         block_cache_capacity: 10,
         header_cache_capacity: 20,
         cache_shards: 2,
