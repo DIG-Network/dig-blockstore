@@ -289,11 +289,8 @@ impl BlockStore {
         let zstd_dict =
             resolve_zstd_dictionary(&db, use_compression_dict, zstd_dictionary_override)?;
         let tip = load_tip(&db)?;
-        let warm = if config.warm_cache_on_open {
-            warm_recent_blocks(&db, &tip, config.warm_cache_depth)?
-        } else {
-            0
-        };
+        let warm_cache_on_open = config.warm_cache_on_open;
+        let warm_cache_depth = config.warm_cache_depth;
         let readahead_size = config.readahead_size;
         let shards = config.cache_shards.max(1);
         let block_cache = Arc::new(ShardedBlockCache::new(config.block_cache_capacity, shards));
@@ -301,12 +298,12 @@ impl BlockStore {
             config.header_cache_capacity,
             shards,
         ));
-        Ok(Self {
+        let store = Self {
             inner: Arc::new(BlockStoreInner {
                 db,
                 read_only: false,
                 tip: RwLock::new(tip),
-                warm_blocks_loaded: AtomicUsize::new(warm),
+                warm_blocks_loaded: AtomicUsize::new(0),
                 compression_level,
                 use_compression_dict,
                 max_decompressed_block_bytes,
@@ -332,7 +329,15 @@ impl BlockStore {
                 )),
             }),
             pipeline_tx: Arc::new(tokio::sync::Mutex::new(None)),
-        })
+        };
+        // CAC-006: warm ALL caches after full construction. get_block_by_height and
+        // get_record_by_height auto-populate block_cache, header_cache, record_cache,
+        // canonical_height_cache (CAC-004), and hash_to_height_cache (CAC-005).
+        if warm_cache_on_open {
+            let warmed = store.warm_caches(warm_cache_depth);
+            store.warm_blocks_loaded.store(warmed, Ordering::Relaxed);
+        }
+        Ok(store)
     }
 
     /// Open an existing database read-only; fails if `path` does not exist ([`STR-004`](../docs/requirements/domains/crate_structure/specs/STR-004.md)).
@@ -544,6 +549,43 @@ impl BlockStore {
     /// Blocks successfully verified present while warming on last [`Self::open`] ([`STR-004`](../docs/requirements/domains/crate_structure/specs/STR-004.md) / [`CAC-006`](../docs/requirements/domains/caching/specs/CAC-006_cache_warming_on_startup.md)).
     pub fn warm_blocks_loaded_count(&self) -> usize {
         self.warm_blocks_loaded.load(Ordering::Relaxed)
+    }
+
+    /// Populate ALL in-memory caches by reading the most recent canonical blocks.
+    ///
+    /// # Algorithm ([`CAC-006`](../docs/requirements/domains/caching/specs/CAC-006_cache_warming_on_startup.md))
+    ///
+    /// Walks backward from the chain tip for up to `depth` heights. At each height,
+    /// calls [`Self::get_block_by_height`] and [`Self::get_record_by_height`] which
+    /// auto-populate block_cache, header_cache, record_cache, hash_to_height_cache,
+    /// and canonical_height_cache through their read-through paths.
+    ///
+    /// # Error handling
+    ///
+    /// Errors (corrupted blocks, missing entries) are silently skipped to ensure
+    /// `open()` always succeeds. The cache will have partial warmth; subsequent reads
+    /// fill the gaps on demand.
+    ///
+    /// # Returns
+    ///
+    /// Count of blocks successfully loaded into cache.
+    fn warm_caches(&self, depth: u64) -> usize {
+        let Some(t) = self.tip() else {
+            return 0;
+        };
+        let start = t.height.saturating_sub(depth.saturating_sub(1));
+        let mut count = 0usize;
+        for h in (start..=t.height).rev() {
+            // get_block_by_height populates: block_cache, header_cache, canonical_height_cache
+            // get_record_by_height populates: record_cache (derives from header)
+            // Both paths also populate hash_to_height_cache via put_block's wiring
+            if self.get_block_by_height(h).ok().flatten().is_some() {
+                // Also warm the record cache for this height
+                let _ = self.get_record_by_height(h);
+                count += 1;
+            }
+        }
+        count
     }
 
     /// Serialize a block header for [`CF_HEADERS`] ([`SER-002`](../docs/requirements/domains/serialization/specs/SER-002.md)).
@@ -2166,68 +2208,7 @@ fn load_tip(db: &DB) -> Result<Option<ChainTip>, BlockStoreError> {
     ChainTip::from_bytes(&raw).map(Some)
 }
 
-/// Pre-verify recent canonical blocks exist in [`CF_BLOCKS`] during startup warming.
-///
-/// Walks backward from `tip.height` for `depth` heights, reading each height's hash
-/// from [`CF_CANONICAL`] and probing [`CF_BLOCKS`] for existence. This does **not**
-/// deserialize blocks or populate the in-memory LRU (that happens lazily on first
-/// `get_block` call); it only counts how many blocks are physically present.
-///
-/// # Chia analogy
-///
-/// Chia's `BlockStore` does not warm caches on startup in the same way, but the
-/// concept maps to the `_load_block_records` path that pre-populates the
-/// `block_record_cache` from SQLite. DIG's approach is lighter: we only verify
-/// existence, deferring deserialization to first access.
-///
-/// # Parameters
-///
-/// - `db` — RocksDB handle (not yet wrapped in `BlockStore`; called during construction).
-/// - `tip` — current chain tip; if `None`, returns 0 immediately (no genesis yet).
-/// - `depth` — number of trailing heights to probe, configured via
-///   [`BlockStoreConfig::warm_cache_depth`](crate::BlockStoreConfig::warm_cache_depth).
-///
-/// # Returns
-///
-/// Count of heights where a block body was found in [`CF_BLOCKS`]. Exposed via
-/// [`BlockStore::warm_blocks_loaded_count`] for startup diagnostics and test assertions.
-///
-/// # Called by
-///
-/// [`BlockStore::open`] when [`BlockStoreConfig::warm_cache_on_open`](crate::BlockStoreConfig::warm_cache_on_open)
-/// is `true` ([`CAC-006`](../docs/requirements/domains/caching/specs/CAC-006_cache_warming_on_startup.md)).
-fn warm_recent_blocks(
-    db: &DB,
-    tip: &Option<ChainTip>,
-    depth: u64,
-) -> Result<usize, BlockStoreError> {
-    let Some(t) = tip else {
-        return Ok(0);
-    };
-    let cf_c = db
-        .cf_handle(CF_CANONICAL)
-        .ok_or_else(|| BlockStoreError::Serialization("missing CF_CANONICAL".into()))?;
-    let cf_b = db
-        .cf_handle(CF_BLOCKS)
-        .ok_or_else(|| BlockStoreError::Serialization("missing CF_BLOCKS".into()))?;
-    let mut count = 0usize;
-    let start = t.height.saturating_sub(depth.saturating_sub(1));
-    for h in start..=t.height {
-        let key = height_key(h);
-        let Some(hash_bytes) = db.get_cf(cf_c, key)? else {
-            continue;
-        };
-        if hash_bytes.len() != 32 {
-            continue;
-        }
-        let arr: [u8; 32] = hash_bytes
-            .as_slice()
-            .try_into()
-            .map_err(|_| BlockStoreError::Serialization("canonical entry not 32 bytes".into()))?;
-        let hash = Bytes32::new(arr);
-        if db.get_cf(cf_b, hash_key(&hash).as_slice())?.is_some() {
-            count += 1;
-        }
-    }
-    Ok(count)
-}
+// NOTE: The old `warm_recent_blocks` free function has been replaced by
+// `BlockStoreInner::warm_caches` (CAC-006) which runs AFTER full construction
+// and populates ALL caches (block, header, record, height index, hash-to-height)
+// instead of only counting block existence.

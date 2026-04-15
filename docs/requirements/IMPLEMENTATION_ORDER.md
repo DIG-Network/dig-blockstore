@@ -82,7 +82,7 @@ After completing a requirement: write tests, verify they pass, update TRACKING.y
 - [x] CAC-003 — BlockRecord cache (in-memory only, derive on miss)
 - [x] CAC-004 — Canonical height index cache
 - [x] CAC-005 — Hash-to-height reverse lookup cache
-- [ ] CAC-006 — Cache warming on startup (preload recent blocks/headers)
+- [x] CAC-006 — Cache warming on startup (preload recent blocks/headers)
 
 ## Phase 8: Rollback & Reorg
 

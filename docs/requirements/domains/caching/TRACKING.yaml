@@ -45,5 +45,8 @@ items:
 
   - id: CAC-006
     title: Cache Warming on Startup
-    status: gap
+    status: implemented
     spec_ref: "11.6"
+    tests:
+      - tests/cac_006_tests.rs
+    notes: "warm_caches() runs after open(); populates ALL caches via get_block_by_height + get_record_by_height; 7 tests"
