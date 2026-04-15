@@ -41,8 +41,9 @@ items:
 
   - id: BLK-007
     title: Async API
-    status: gap
+    status: done
     spec_ref: "5.5"
+    notes: "BlockStore: Arc<BlockStoreInner> + Deref + Clone; get_block_async/get_header_async (cache hit fast path, miss spawn_blocking); get_block_by_height_async always spawn_blocking; ERR_ASYNC_JOIN_PREFIX → Serialization; tests/blk_007_tests.rs"
 
   - id: BLK-008
     title: Write Pipeline (put_pipelined)

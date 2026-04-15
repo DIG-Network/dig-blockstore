@@ -59,6 +59,8 @@ memmap2 = "0.9"
 # Used by `tests/str_001_tests.rs` to parse this manifest
 # deterministically (STR-001 test plan).
 toml = "0.8"
+# BLK-007 — deterministic [`std::future::Future::poll`] without local `unsafe` waker glue (`tests/blk_007_tests.rs`).
+futures = { version = "0.3", default-features = false, features = ["std"] }
 # STR-004 / STR-005 — temp dirs and direct RocksDB introspection in integration tests.
 tempfile = "3"
 rocksdb = { version = "0.22", default-features = false, features = ["zstd"] }
@@ -154,6 +156,10 @@ path = "tests/blk_005_tests.rs"
 [[test]]
 name = "blk_006_tests"
 path = "tests/blk_006_tests.rs"
+
+[[test]]
+name = "blk_007_tests"
+path = "tests/blk_007_tests.rs"
 
 [[test]]
 name = "typ_001_tests"

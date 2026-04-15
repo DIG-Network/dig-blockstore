@@ -55,7 +55,7 @@ After completing a requirement: write tests, verify they pass, update TRACKING.y
 - [x] BLK-004 — get_record by hash (in-memory cache, derive from header on miss)
 - [x] BLK-005 — Batch retrieval (get_blocks_by_hash via multi_get)
 - [x] BLK-006 — Prefetching for sequential access (readahead)
-- [ ] BLK-007 — Async API (cache hit on executor, DB miss to spawn_blocking)
+- [x] BLK-007 — Async API (cache hit on executor, DB miss to spawn_blocking)
 - [ ] BLK-008 — Write pipeline (async put_pipelined returning oneshot::Receiver)
 - [ ] BLK-009 — put_attestation / get_attestation in CF_ATTESTED
 - [ ] BLK-010 — update_status (BlockStatus update on BlockRecord in cache)

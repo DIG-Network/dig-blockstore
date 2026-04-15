@@ -52,6 +52,7 @@
 //! - [`BLK-004`](../docs/requirements/domains/block_storage/specs/BLK-004.md) — `get_record` with layered caching.
 //! - [`BLK-005`](../docs/requirements/domains/block_storage/specs/BLK-005.md) — `get_blocks_by_hash` batch retrieval.
 //! - [`BLK-006`](../docs/requirements/domains/block_storage/specs/BLK-006.md) — `stream_blocks_in_range` sequential readahead.
+//! - [`BLK-007`](../docs/requirements/domains/block_storage/specs/BLK-007.md) — async read wrappers (`get_block_async`, …).
 //! - [`SER-001`](../docs/requirements/domains/serialization/specs/SER-001.md) — bincode + zstd block serialization.
 //! - [`SER-002`](../docs/requirements/domains/serialization/specs/SER-002.md) — bincode-only header serialization.
 //! - [`SER-005`](../docs/requirements/domains/serialization/specs/SER-005.md) — dictionary training and persistence.
@@ -80,11 +81,83 @@ use crate::constants::{
 };
 use crate::encoding::{decode_height_key, hash_key, height_key};
 use crate::error::{
-    BlockStoreError, ERR_INIT_GENESIS_ALREADY_INITIALIZED, ERR_INIT_GENESIS_READ_ONLY,
-    ERR_MUTATION_READ_ONLY, ERR_OPEN_READONLY_PATH_MISSING_PREFIX,
+    BlockStoreError, ERR_ASYNC_JOIN_PREFIX, ERR_INIT_GENESIS_ALREADY_INITIALIZED,
+    ERR_INIT_GENESIS_READ_ONLY, ERR_MUTATION_READ_ONLY, ERR_OPEN_READONLY_PATH_MISSING_PREFIX,
 };
 use crate::types::{BlockRecord, ChainTip};
 use crate::BlockStoreConfig;
+
+/// Shared RocksDB + cache state behind [`BlockStore`].
+///
+/// **Why a separate type ([`BLK-007`](../docs/requirements/domains/block_storage/specs/BLK-007.md)):** [`BlockStore`]
+/// wraps this struct in [`Arc`] so [`BlockStore::clone`] is a single refcount increment. Async helpers move a clone
+/// into [`tokio::task::spawn_blocking`] while preserving one logical store (atomics + caches stay shared).
+///
+/// Public API remains on [`BlockStore`] via [`std::ops::Deref`]. The type is `pub` so [`Deref::Target`] is
+/// well-formed; external crates should still depend on [`BlockStore`] methods only ([`BLK-008`](../docs/requirements/domains/block_storage/specs/BLK-008.md) will deepen `Arc` sharing).
+#[doc(hidden)]
+pub struct BlockStoreInner {
+    /// RocksDB handle shared across all operations. Thread-safe via RocksDB's internal locking.
+    /// All six column families ([`TYP-001`]) are created at open time.
+    db: Arc<DB>,
+    /// When `true`, all mutation APIs (`put_block`, `init_genesis`) return
+    /// [`BlockStoreError::Serialization`] with [`ERR_MUTATION_READ_ONLY`].
+    /// Set by [`BlockStore::open_readonly`]; cannot be toggled after construction.
+    read_only: bool,
+    /// In-memory copy of the chain tip from [`META_TIP`] in [`CF_METADATA`].
+    /// Updated atomically after [`BlockStore::init_genesis`] and future tip-advance APIs.
+    /// Reads use [`RwLock::read`] (very cheap with parking_lot); writes are rare (new blocks).
+    tip: RwLock<Option<ChainTip>>,
+    /// Count of blocks verified present during cache warming at last [`BlockStore::open`].
+    /// Exposed via [`BlockStore::warm_blocks_loaded_count`] for startup diagnostics.
+    warm_blocks_loaded: AtomicUsize,
+    /// Zstd level for [`BlockStore::serialize_block`] / plain fallback ([`SER-001`](../docs/requirements/domains/serialization/specs/SER-001.md) §6).
+    compression_level: i32,
+    /// When true and [`Self::zstd_dict`] is [`Some`], compress with dictionary ([`SER-005`](../docs/requirements/domains/serialization/specs/SER-005.md) precursor).
+    use_compression_dict: bool,
+    /// Cap passed to [`zstd::bulk::Decompressor::decompress`] ([`SER-001`](../docs/requirements/domains/serialization/specs/SER-001.md) implementation notes).
+    max_decompressed_block_bytes: usize,
+    /// Trained dictionary loaded from [`META_ZSTD_DICT`] or [`BlockStoreConfig::zstd_dictionary_override`].
+    ///
+    /// **[`SER-005`](../docs/requirements/domains/serialization/specs/SER-005.md):** [`RwLock`] lets
+    /// [`BlockStore::maybe_train_dictionary`] publish the first trained dictionary **after** the write that crosses
+    /// [`DICT_TRAINING_THRESHOLD`](crate::constants::DICT_TRAINING_THRESHOLD) while keeping [`BlockStore`] on an
+    /// immutable `&self` API surface (matches `put`-style ergonomics slated for [`BLK-001`](../docs/requirements/domains/block_storage/specs/BLK-001.md)).
+    zstd_dict: RwLock<Option<Arc<Vec<u8>>>>,
+    /// [`BlockRecord`] rows derived on write; **never** persisted ([`BLK-001`](../docs/requirements/domains/block_storage/specs/BLK-001.md), [`CAC-003`](../docs/requirements/domains/caching/specs/CAC-003.md) precursor).
+    ///
+    /// **Concurrency:** [`parking_lot::Mutex`] keeps inserts from [`BlockStore::put_block`] / [`BlockStore::init_genesis`] and
+    /// lookups from [`BlockStore::get_record`] safe without `&mut self`.
+    record_cache: Mutex<HashMap<Bytes32, BlockRecord>>,
+    /// Sharded LRU of deserialized [`L2Block`] values ([`BLK-002`](../docs/requirements/domains/block_storage/specs/BLK-002.md)).
+    block_cache: Arc<ShardedBlockCache>,
+    /// Count of RocksDB `get_cf` calls against [`CF_BLOCKS`] issued from [`BlockStore::get_block`] **after** a cache miss.
+    ///
+    /// **Rationale:** Proves AC §2 “no I/O on hit” in `tests/blk_002_tests.rs`; cheap atomic hot path on miss only.
+    /// **Not incremented** by [`BlockStore::get_blocks_by_hash`] (that path uses [`DB::multi_get_cf`](rocksdb::DB::multi_get_cf); see [`BlockStore::cf_blocks_multi_get_batch_count`]).
+    cf_blocks_physical_gets: AtomicUsize,
+    /// Count of [`rocksdb::DB::multi_get_cf`] **batch invocations** from [`BlockStore::get_blocks_by_hash`] when the input
+    /// contains at least one block-cache miss ([`BLK-005`](../docs/requirements/domains/block_storage/specs/BLK-005.md) AC §3).
+    ///
+    /// **Semantics:** Increments by **at most one per `get_blocks_by_hash` call** that performs RocksDB I/O (all misses
+    /// share one `multi_get_cf` round-trip). Stays at zero when every hash hits [`BlockStore::block_cache`] or when `hashes` is empty.
+    cf_blocks_multi_get_batches: AtomicUsize,
+    /// Count of [`DB::get_cf_opt`](rocksdb::DB::get_cf_opt) calls against [`CF_BLOCKS`] from [`StreamBlocksInRange`]
+    /// ([`BLK-006`](../docs/requirements/domains/block_storage/specs/BLK-006.md)) after a block-cache miss.
+    ///
+    /// **Rationale:** Distinct from [`BlockStore::cf_blocks_physical_get_count`] ([`get_block`](BlockStore::get_block)) so tests can
+    /// prove cache hits in a streamed range skip redundant block-blob reads ([`tests/blk_006_tests.rs`]).
+    cf_blocks_stream_physical_gets: AtomicUsize,
+    /// Copy of [`BlockStoreConfig::readahead_size`](crate::BlockStoreConfig::readahead_size) at open time ([`BLK-006`](../docs/requirements/domains/block_storage/specs/BLK-006.md) AC §4).
+    readahead_size: usize,
+    /// Sharded LRU of [`L2BlockHeader`] values ([`BLK-003`](../docs/requirements/domains/block_storage/specs/BLK-003.md)).
+    ///
+    /// **Separate** from [`Self::block_cache`] per BLK-003 implementation notes (tunables: [`BlockStoreConfig::header_cache_capacity`](crate::BlockStoreConfig::header_cache_capacity)).
+    header_cache: Arc<ShardedHeaderCache>,
+    /// Count of RocksDB `get_cf` calls against [`CF_HEADERS`] after **both** [`Self::header_cache`] and
+    /// [`Self::record_cache`] miss — incremented by [`BlockStore::get_header`] and by [`BlockStore::get_record`] ([`BLK-003`](../docs/requirements/domains/block_storage/specs/BLK-003.md), [`BLK-004`](../docs/requirements/domains/block_storage/specs/BLK-004.md)).
+    cf_headers_physical_gets: AtomicUsize,
+}
 
 /// Primary handle for all block persistence APIs.
 ///
@@ -98,75 +171,25 @@ use crate::BlockStoreConfig;
 ///
 /// # Ownership
 ///
-/// Holds an `Arc<DB>` so it can be shared across threads (e.g., sync worker + RPC handler).
-/// All caches use interior mutability (`RwLock`, `Mutex`, atomics) so the public API is `&self`.
+/// Thin [`Arc`] around [`BlockStoreInner`]: cheap [`Clone`] for [`tokio::task::spawn_blocking`] dispatch ([`BLK-007`](../docs/requirements/domains/block_storage/specs/BLK-007.md)).
+/// Field access on `&BlockStore` transparently reaches [`BlockStoreInner`] via [`std::ops::Deref`].
 ///
 /// # Construction
 ///
 /// Use [`BlockStore::open`] for read-write access or [`BlockStore::open_readonly`] for read-only
 /// access to an existing database. After construction, call [`BlockStore::init_genesis`] once
 /// to initialize a new chain.
+#[derive(Clone)]
 pub struct BlockStore {
-    /// RocksDB handle shared across all operations. Thread-safe via RocksDB's internal locking.
-    /// All six column families ([`TYP-001`]) are created at open time.
-    db: Arc<DB>,
-    /// When `true`, all mutation APIs (`put_block`, `init_genesis`) return
-    /// [`BlockStoreError::Serialization`] with [`ERR_MUTATION_READ_ONLY`].
-    /// Set by [`Self::open_readonly`]; cannot be toggled after construction.
-    read_only: bool,
-    /// In-memory copy of the chain tip from [`META_TIP`] in [`CF_METADATA`].
-    /// Updated atomically after [`init_genesis`](Self::init_genesis) and future tip-advance APIs.
-    /// Reads use [`RwLock::read`] (very cheap with parking_lot); writes are rare (new blocks).
-    tip: RwLock<Option<ChainTip>>,
-    /// Count of blocks verified present during cache warming at last [`Self::open`].
-    /// Exposed via [`Self::warm_blocks_loaded_count`] for startup diagnostics.
-    warm_blocks_loaded: AtomicUsize,
-    /// Zstd level for [`Self::serialize_block`] / plain fallback ([`SER-001`](../docs/requirements/domains/serialization/specs/SER-001.md) §6).
-    compression_level: i32,
-    /// When true and [`Self::zstd_dict`] is [`Some`], compress with dictionary ([`SER-005`](../docs/requirements/domains/serialization/specs/SER-005.md) precursor).
-    use_compression_dict: bool,
-    /// Cap passed to [`zstd::bulk::Decompressor::decompress`] ([`SER-001`](../docs/requirements/domains/serialization/specs/SER-001.md) implementation notes).
-    max_decompressed_block_bytes: usize,
-    /// Trained dictionary loaded from [`META_ZSTD_DICT`] or [`BlockStoreConfig::zstd_dictionary_override`].
-    ///
-    /// **[`SER-005`](../docs/requirements/domains/serialization/specs/SER-005.md):** [`RwLock`] lets
-    /// [`Self::maybe_train_dictionary`] publish the first trained dictionary **after** the write that crosses
-    /// [`DICT_TRAINING_THRESHOLD`](crate::constants::DICT_TRAINING_THRESHOLD) while keeping [`BlockStore`] on an
-    /// immutable `&self` API surface (matches `put`-style ergonomics slated for [`BLK-001`](../docs/requirements/domains/block_storage/specs/BLK-001.md)).
-    zstd_dict: RwLock<Option<Arc<Vec<u8>>>>,
-    /// [`BlockRecord`] rows derived on write; **never** persisted ([`BLK-001`](../docs/requirements/domains/block_storage/specs/BLK-001.md), [`CAC-003`](../docs/requirements/domains/caching/specs/CAC-003.md) precursor).
-    ///
-    /// **Concurrency:** [`parking_lot::Mutex`] keeps inserts from [`Self::put_block`] / [`Self::init_genesis`] and
-    /// lookups from [`Self::get_record`] safe without `&mut self`.
-    record_cache: Mutex<HashMap<Bytes32, BlockRecord>>,
-    /// Sharded LRU of deserialized [`L2Block`] values ([`BLK-002`](../docs/requirements/domains/block_storage/specs/BLK-002.md)).
-    block_cache: Arc<ShardedBlockCache>,
-    /// Count of RocksDB `get_cf` calls against [`CF_BLOCKS`] issued from [`Self::get_block`] **after** a cache miss.
-    ///
-    /// **Rationale:** Proves AC §2 “no I/O on hit” in `tests/blk_002_tests.rs`; cheap atomic hot path on miss only.
-    /// **Not incremented** by [`Self::get_blocks_by_hash`] (that path uses [`DB::multi_get_cf`](rocksdb::DB::multi_get_cf); see [`Self::cf_blocks_multi_get_batch_count`]).
-    cf_blocks_physical_gets: AtomicUsize,
-    /// Count of [`rocksdb::DB::multi_get_cf`] **batch invocations** from [`Self::get_blocks_by_hash`] when the input
-    /// contains at least one block-cache miss ([`BLK-005`](../docs/requirements/domains/block_storage/specs/BLK-005.md) AC §3).
-    ///
-    /// **Semantics:** Increments by **at most one per `get_blocks_by_hash` call** that performs RocksDB I/O (all misses
-    /// share one `multi_get_cf` round-trip). Stays at zero when every hash hits [`Self::block_cache`] or when `hashes` is empty.
-    cf_blocks_multi_get_batches: AtomicUsize,
-    /// Count of [`DB::get_cf_opt`](rocksdb::DB::get_cf_opt) calls against [`CF_BLOCKS`] from [`StreamBlocksInRange`]
-    /// ([`BLK-006`](../docs/requirements/domains/block_storage/specs/BLK-006.md)) after a block-cache miss.
-    ///
-    /// **Rationale:** Distinct from [`Self::cf_blocks_physical_get_count`] ([`get_block`](Self::get_block)) so tests can
-    /// prove cache hits in a streamed range skip redundant block-blob reads ([`tests/blk_006_tests.rs`]).
-    cf_blocks_stream_physical_gets: AtomicUsize,
-    /// Copy of [`BlockStoreConfig::readahead_size`](crate::BlockStoreConfig::readahead_size) at open time ([`BLK-006`](../docs/requirements/domains/block_storage/specs/BLK-006.md) AC §4).
-    readahead_size: usize,
-    /// Sharded LRU of [`L2BlockHeader`] values ([`BLK-003`](../docs/requirements/domains/block_storage/specs/BLK-003.md)).
-    ///
-    /// **Separate** from [`Self::block_cache`] per BLK-003 implementation notes (tunables: [`BlockStoreConfig::header_cache_capacity`](crate::BlockStoreConfig::header_cache_capacity)).
-    header_cache: Arc<ShardedHeaderCache>,
-    /// Count of RocksDB `get_cf` calls against [`CF_HEADERS`] after **both** [`Self::header_cache`] and
-    /// [`Self::record_cache`] miss — incremented by [`Self::get_header`] and by [`Self::get_record`] ([`BLK-003`](../docs/requirements/domains/block_storage/specs/BLK-003.md), [`BLK-004`](../docs/requirements/domains/block_storage/specs/BLK-004.md)).
-    cf_headers_physical_gets: AtomicUsize,
+    inner: Arc<BlockStoreInner>,
+}
+
+impl std::ops::Deref for BlockStore {
+    type Target = BlockStoreInner;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
 }
 
 impl BlockStore {
@@ -206,22 +229,24 @@ impl BlockStore {
             shards,
         ));
         Ok(Self {
-            db,
-            read_only: false,
-            tip: RwLock::new(tip),
-            warm_blocks_loaded: AtomicUsize::new(warm),
-            compression_level,
-            use_compression_dict,
-            max_decompressed_block_bytes,
-            zstd_dict: RwLock::new(zstd_dict),
-            record_cache: Mutex::new(HashMap::new()),
-            block_cache,
-            cf_blocks_physical_gets: AtomicUsize::new(0),
-            cf_blocks_multi_get_batches: AtomicUsize::new(0),
-            cf_blocks_stream_physical_gets: AtomicUsize::new(0),
-            readahead_size,
-            header_cache,
-            cf_headers_physical_gets: AtomicUsize::new(0),
+            inner: Arc::new(BlockStoreInner {
+                db,
+                read_only: false,
+                tip: RwLock::new(tip),
+                warm_blocks_loaded: AtomicUsize::new(warm),
+                compression_level,
+                use_compression_dict,
+                max_decompressed_block_bytes,
+                zstd_dict: RwLock::new(zstd_dict),
+                record_cache: Mutex::new(HashMap::new()),
+                block_cache,
+                cf_blocks_physical_gets: AtomicUsize::new(0),
+                cf_blocks_multi_get_batches: AtomicUsize::new(0),
+                cf_blocks_stream_physical_gets: AtomicUsize::new(0),
+                readahead_size,
+                header_cache,
+                cf_headers_physical_gets: AtomicUsize::new(0),
+            }),
         })
     }
 
@@ -262,22 +287,24 @@ impl BlockStore {
             shards,
         ));
         Ok(Self {
-            db,
-            read_only: true,
-            tip: RwLock::new(tip),
-            warm_blocks_loaded: AtomicUsize::new(0),
-            compression_level,
-            use_compression_dict,
-            max_decompressed_block_bytes,
-            zstd_dict: RwLock::new(zstd_dict),
-            record_cache: Mutex::new(HashMap::new()),
-            block_cache,
-            cf_blocks_physical_gets: AtomicUsize::new(0),
-            cf_blocks_multi_get_batches: AtomicUsize::new(0),
-            cf_blocks_stream_physical_gets: AtomicUsize::new(0),
-            readahead_size,
-            header_cache,
-            cf_headers_physical_gets: AtomicUsize::new(0),
+            inner: Arc::new(BlockStoreInner {
+                db,
+                read_only: true,
+                tip: RwLock::new(tip),
+                warm_blocks_loaded: AtomicUsize::new(0),
+                compression_level,
+                use_compression_dict,
+                max_decompressed_block_bytes,
+                zstd_dict: RwLock::new(zstd_dict),
+                record_cache: Mutex::new(HashMap::new()),
+                block_cache,
+                cf_blocks_physical_gets: AtomicUsize::new(0),
+                cf_blocks_multi_get_batches: AtomicUsize::new(0),
+                cf_blocks_stream_physical_gets: AtomicUsize::new(0),
+                readahead_size,
+                header_cache,
+                cf_headers_physical_gets: AtomicUsize::new(0),
+            }),
         })
     }
 
@@ -864,6 +891,80 @@ impl BlockStore {
         let dict = self.train_dictionary()?;
         *self.zstd_dict.write() = Some(Arc::new(dict));
         Ok(())
+    }
+
+    /// Async retrieval by hash ([`BLK-007`](../docs/requirements/domains/block_storage/specs/BLK-007.md) AC §1, §4, §5).
+    ///
+    /// **Hot path:** [`Self::block_cache`] hits return cloned blocks **before** any `.await`, so the generated
+    /// future can complete as [`Poll::Ready`] on the first [`poll`](std::future::Future::poll) without scheduling
+    /// [`tokio::task::spawn_blocking`] (NORMATIVE BLK-007 §1–2).
+    ///
+    /// **Cold path:** Delegates to [`Self::get_block`] on the blocking pool so RocksDB + zstd never run on a
+    /// cooperative tokio worker thread.
+    pub async fn get_block_async(
+        &self,
+        hash: &Bytes32,
+    ) -> Result<Option<L2Block>, BlockStoreError> {
+        if let Some(block) = self.block_cache.get_clone(hash) {
+            return Ok(Some(block));
+        }
+        let store = self.clone();
+        let hash = *hash;
+        tokio::task::spawn_blocking(move || store.get_block(&hash))
+            .await
+            .map_err(Self::map_spawn_join)?
+    }
+
+    /// Async header retrieval ([`BLK-007`](../docs/requirements/domains/block_storage/specs/BLK-007.md) AC §2, §4–5).
+    pub async fn get_header_async(
+        &self,
+        hash: &Bytes32,
+    ) -> Result<Option<L2BlockHeader>, BlockStoreError> {
+        if let Some(header) = self.header_cache.get_clone(hash) {
+            return Ok(Some(header));
+        }
+        let store = self.clone();
+        let hash = *hash;
+        tokio::task::spawn_blocking(move || store.get_header(&hash))
+            .await
+            .map_err(Self::map_spawn_join)?
+    }
+
+    /// Async canonical-height lookup followed by block load ([`BLK-007`](../docs/requirements/domains/block_storage/specs/BLK-007.md) AC §3).
+    ///
+    /// **Always `spawn_blocking`:** height→hash uses [`CF_CANONICAL`] I/O; per BLK-007 implementation notes this
+    /// stays on the blocking pool even when the block body would hit [`Self::block_cache`], avoiding partial
+    /// “async hits” that still touch RocksDB in the sync prelude.
+    pub async fn get_block_by_height_async(
+        &self,
+        height: u64,
+    ) -> Result<Option<L2Block>, BlockStoreError> {
+        let store = self.clone();
+        tokio::task::spawn_blocking(move || {
+            let cf = store.cf(CF_CANONICAL)?;
+            let hk = height_key(height);
+            let Some(hash_bytes) = store.db.get_cf(cf, hk.as_slice())? else {
+                return Ok(None);
+            };
+            let arr: [u8; 32] = hash_bytes.as_slice().try_into().map_err(|_| {
+                BlockStoreError::Serialization(
+                    "get_block_by_height_async: CF_CANONICAL value must be exactly 32 bytes".into(),
+                )
+            })?;
+            let hash = Bytes32::new(arr);
+            store.get_block(&hash)
+        })
+        .await
+        .map_err(Self::map_spawn_join)?
+    }
+
+    /// Maps a failed [`tokio::task::spawn_blocking`] join handle onto [`BlockStoreError::Serialization`].
+    ///
+    /// **Why not a dedicated enum variant:** [`ERR-001`](../docs/requirements/domains/error_types/specs/ERR-001_blockstoreerror_enum.md) caps
+    /// the error surface at thirteen variants; join failures are rare operational faults surfaced with [`ERR_ASYNC_JOIN_PREFIX`].
+    #[inline]
+    fn map_spawn_join(err: tokio::task::JoinError) -> BlockStoreError {
+        BlockStoreError::Serialization(format!("{ERR_ASYNC_JOIN_PREFIX}{err}"))
     }
 
     /// Resolve a column family handle by name, or error if the DB was not opened with it.

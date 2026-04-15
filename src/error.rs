@@ -44,6 +44,15 @@ pub const ERR_MUTATION_READ_ONLY: &str = "mutating API invoked on read-only bloc
 pub const ERR_INIT_GENESIS_ALREADY_INITIALIZED: &str =
     "init_genesis: block store already initialized";
 
+/// Stable [`BlockStoreError::Serialization`] payload prefix when a [`tokio::task::spawn_blocking`]
+/// task panics or is cancelled and [`tokio::task::JoinError`] surfaces on `.await`
+/// ([`BLK-007`](../docs/requirements/domains/block_storage/specs/BLK-007.md) AC §6).
+///
+/// **Rationale:** [`ERR-001`](../docs/requirements/domains/error_types/specs/ERR-001_blockstoreerror_enum.md) caps
+/// [`BlockStoreError`] at thirteen variants, so async join failures are folded into [`Serialization`](BlockStoreError::Serialization)
+/// with this discriminating prefix instead of a dedicated enum arm.
+pub const ERR_ASYNC_JOIN_PREFIX: &str = "async blocking task join failed: ";
+
 /// Crate-level error for persistence, chain, and I/O boundaries ([`ERR-001`](../docs/requirements/domains/error_types/specs/ERR-001_blockstoreerror_enum.md)).
 ///
 /// **Display:** Each `#[error("…")]` attribute is the contract for logs and user-facing text ([`ERR-003`](../docs/requirements/domains/error_types/specs/ERR-003_error_display_messages.md)).
