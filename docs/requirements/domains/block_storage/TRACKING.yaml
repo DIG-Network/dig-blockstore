@@ -11,8 +11,9 @@ items:
 
   - id: BLK-002
     title: Get Block by Hash (get_block)
-    status: gap
+    status: done
     spec_ref: "5.2"
+    notes: "ShardedBlockCache (CAC-001-style); get_block cache-first; cf_blocks_physical_get_count; invalidate_block_cache_entry; init_genesis/put_block seed cache; tests/blk_002_tests.rs"
 
   - id: BLK-003
     title: Get Header by Hash (get_header)

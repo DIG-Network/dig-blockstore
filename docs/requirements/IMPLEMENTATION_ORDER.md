@@ -50,7 +50,7 @@ After completing a requirement: write tests, verify they pass, update TRACKING.y
 ## Phase 5: Block Storage
 
 - [x] BLK-001 — put_block (store block + header + record, idempotent)
-- [ ] BLK-002 — get_block by hash (cache → RocksDB, decompress)
+- [x] BLK-002 — get_block by hash (cache → RocksDB, decompress)
 - [ ] BLK-003 — get_header by hash (cache → RocksDB)
 - [ ] BLK-004 — get_record by hash (in-memory cache, derive from header on miss)
 - [ ] BLK-005 — Batch retrieval (get_blocks_by_hash via multi_get)

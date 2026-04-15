@@ -5,6 +5,7 @@
 //! - Block bodies: `bincode` + zstd ([`SER-001`](../docs/requirements/domains/serialization/specs/SER-001.md)); headers: `bincode` only ([`SER-002`](../docs/requirements/domains/serialization/specs/SER-002.md)).
 //! - Tip / genesis metadata: [`crate::constants::META_TIP`], [`crate::constants::META_GENESIS_HASH`].
 //! - [`BlockRecord`](crate::BlockRecord) cache: in-memory only ([`BLK-001`](../docs/requirements/domains/block_storage/specs/BLK-001.md), [`TYP-004`](../docs/requirements/domains/storage_types/specs/TYP-004.md)).
+//! - Block body cache: [`crate::cache::sharded::ShardedBlockCache`] ([`BLK-002`](../docs/requirements/domains/block_storage/specs/BLK-002.md), [`CAC-001`](../docs/requirements/domains/caching/specs/CAC-001_sharded_block_cache.md)).
 //!
 //! **Spec:** `docs/resources/SPEC.md` §15.1 (constructors), §16 (crate boundary).
 
@@ -19,6 +20,7 @@ use parking_lot::{Mutex, RwLock};
 use rand::seq::SliceRandom;
 use rocksdb::{IteratorMode, Options, WriteBatch, DB};
 
+use crate::cache::sharded::ShardedBlockCache;
 use crate::cf_options;
 use crate::constants::{
     CF_BLOCKS, CF_CANONICAL, CF_HEADERS, CF_METADATA, DICT_TARGET_SIZE, DICT_TRAINING_THRESHOLD,
@@ -56,6 +58,12 @@ pub struct BlockStore {
     /// **Concurrency:** [`parking_lot::Mutex`] keeps inserts from [`Self::put_block`] / [`Self::init_genesis`] and
     /// lookups from [`Self::get_record`] safe without `&mut self`.
     record_cache: Mutex<HashMap<Bytes32, BlockRecord>>,
+    /// Sharded LRU of deserialized [`L2Block`] values ([`BLK-002`](../docs/requirements/domains/block_storage/specs/BLK-002.md)).
+    block_cache: Arc<ShardedBlockCache>,
+    /// Count of RocksDB `get_cf` calls against [`CF_BLOCKS`] issued from [`Self::get_block`] **after** a cache miss.
+    ///
+    /// **Rationale:** Proves AC §2 “no I/O on hit” in `tests/blk_002_tests.rs`; cheap atomic hot path on miss only.
+    cf_blocks_physical_gets: AtomicUsize,
 }
 
 impl BlockStore {
@@ -87,6 +95,10 @@ impl BlockStore {
         } else {
             0
         };
+        let block_cache = Arc::new(ShardedBlockCache::new(
+            config.block_cache_capacity,
+            config.cache_shards.max(1),
+        ));
         Ok(Self {
             db,
             read_only: false,
@@ -97,6 +109,8 @@ impl BlockStore {
             max_decompressed_block_bytes,
             zstd_dict: RwLock::new(zstd_dict),
             record_cache: Mutex::new(HashMap::new()),
+            block_cache,
+            cf_blocks_physical_gets: AtomicUsize::new(0),
         })
     }
 
@@ -126,6 +140,10 @@ impl BlockStore {
         let zstd_dict =
             resolve_zstd_dictionary(&db, use_compression_dict, zstd_dictionary_override)?;
         let tip = load_tip(&db)?;
+        let block_cache = Arc::new(ShardedBlockCache::new(
+            readonly_cfg.block_cache_capacity,
+            readonly_cfg.cache_shards.max(1),
+        ));
         Ok(Self {
             db,
             read_only: true,
@@ -136,6 +154,8 @@ impl BlockStore {
             max_decompressed_block_bytes,
             zstd_dict: RwLock::new(zstd_dict),
             record_cache: Mutex::new(HashMap::new()),
+            block_cache,
+            cf_blocks_physical_gets: AtomicUsize::new(0),
         })
     }
 
@@ -184,6 +204,7 @@ impl BlockStore {
         *self.tip.write() = Some(tip);
         let record = BlockRecord::from_header(&block.header, BlockStatus::Validated);
         self.record_cache.lock().insert(hash, record);
+        self.block_cache.insert(hash, block.clone());
         self.maybe_train_dictionary()?;
         Ok(())
     }
@@ -274,13 +295,38 @@ impl BlockStore {
         zstd::decode_all(compressed)
     }
 
-    /// Deserialize a full block by hash ([`BLK-002`](../docs/requirements/domains/block_storage/specs/BLK-002.md) precursor).
+    /// Retrieve a full block by hash ([`BLK-002`](../docs/requirements/domains/block_storage/specs/BLK-002.md)).
+    ///
+    /// **Order:** [`Self::block_cache`] (sharded LRU, [`CAC-001`](../docs/requirements/domains/caching/specs/CAC-001_sharded_block_cache.md))
+    /// → on miss, `get_cf` [`CF_BLOCKS`] → [`Self::deserialize_block`] (dictionary zstd with plain fallback per [`SER-005`](../docs/requirements/domains/serialization/specs/SER-005.md)).
+    ///
+    /// **Write path:** [`Self::put_block`] / [`Self::init_genesis`] insert fresh values so steady-state reads hit RAM.
     pub fn get_block(&self, hash: &Bytes32) -> Result<Option<L2Block>, BlockStoreError> {
+        if let Some(block) = self.block_cache.get_clone(hash) {
+            return Ok(Some(block));
+        }
         let cf = self.cf(CF_BLOCKS)?;
-        let Some(raw) = self.db.get_cf(cf, hash_key(hash).as_slice())? else {
+        self.cf_blocks_physical_gets
+            .fetch_add(1, Ordering::Relaxed);
+        let raw_opt = self.db.get_cf(cf, hash_key(hash).as_slice())?;
+        let Some(raw) = raw_opt else {
             return Ok(None);
         };
-        Ok(Some(self.deserialize_block(&raw)?))
+        let block = self.deserialize_block(&raw)?;
+        self.block_cache.insert(*hash, block.clone());
+        Ok(Some(block))
+    }
+
+    /// Drop a single entry from the in-memory block LRU — **no RocksDB writes** ([`BLK-002`](../docs/requirements/domains/block_storage/specs/BLK-002.md) test plan: simulate eviction).
+    pub fn invalidate_block_cache_entry(&self, hash: &Bytes32) {
+        self.block_cache.remove(hash);
+    }
+
+    /// How many times [`Self::get_block`] reached RocksDB [`CF_BLOCKS`] after a cache miss (includes `Ok(None)` probes).
+    ///
+    /// **Tests / ops:** [`tests/blk_002_tests.rs`] asserts hits add zero; misses increment exactly once per call.
+    pub fn cf_blocks_physical_get_count(&self) -> u64 {
+        self.cf_blocks_physical_gets.load(Ordering::Relaxed) as u64
     }
 
     /// **[`BLK-001`](../docs/requirements/domains/block_storage/specs/BLK-001.md)** — Primary name in
@@ -320,6 +366,7 @@ impl BlockStore {
         self.db.write(batch)?;
         let record = BlockRecord::from_header(&block.header, BlockStatus::Validated);
         self.record_cache.lock().insert(hash, record);
+        self.block_cache.insert(hash, block.clone());
         self.maybe_train_dictionary()?;
         Ok(true)
     }
