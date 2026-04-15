@@ -23,8 +23,9 @@ items:
 
   - id: SER-004
     title: Round-Trip Guarantees
-    status: gap
+    status: done
     spec_ref: "13.4"
+    notes: "tests/ser_004_tests.rs — bincode (header, L2Block/AttestedBlock stable+hash), BlockRecord clone (TYP-004 no serde), zstd+dictionary, BlockStore hash invariance; SnapshotManifest deferred to SNP-003"
 
   - id: SER-005
     title: Dictionary Training and Management

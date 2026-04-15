@@ -228,6 +228,9 @@ impl BlockStore {
     /// **Fallback:** Dictionary decompress is attempted first when configured; on failure, plain
     /// [`zstd::decode_all`] handles **pre-dictionary** payloads written before training ([`SER-005`](../docs/requirements/domains/serialization/specs/SER-005.md)).
     ///
+    /// **Hash invariance:** Correct payloads MUST yield an [`L2Block`] whose [`L2Block::hash`] matches the original
+    /// pre-serialize block ([`SER-004`](../docs/requirements/domains/serialization/specs/SER-004.md); verified in `tests/ser_004_tests.rs`).
+    ///
     /// **Errors:** Decompression failures map to [`BlockStoreError::Serialization`] so callers see a single
     /// “payload unusable” surface for malformed CF_BYTES; bincode structural errors also use [`Serialization`](BlockStoreError::Serialization).
     pub fn deserialize_block(&self, compressed: &[u8]) -> Result<L2Block, BlockStoreError> {

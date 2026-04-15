@@ -122,6 +122,10 @@ name = "ser_003_tests"
 path = "tests/ser_003_tests.rs"
 
 [[test]]
+name = "ser_004_tests"
+path = "tests/ser_004_tests.rs"
+
+[[test]]
 name = "typ_001_tests"
 path = "tests/typ_001_tests.rs"
 
