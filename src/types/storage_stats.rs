@@ -9,9 +9,9 @@
 //! ## Rationale
 //!
 //! - **Pure snapshot:** This type intentionally carries **no** `RocksDB` handle or async context. [`Default`]
-//!   represents an “empty / unknown” report; future `BlockStore::stats` ([`BLK-012`](../../docs/requirements/domains/block_storage/specs/BLK-012.md))
-//!   will populate fields by scanning column families and metadata keys such as [`crate::constants::META_TIP`]
-//!   and [`crate::constants::META_MIN_HEIGHT`].
+//!   represents an “empty / unknown” report; [`BlockStore::stats`](crate::store::BlockStore::stats) ([`BLK-012`](../../docs/requirements/domains/block_storage/specs/BLK-012.md))
+//!   populates fields by scanning column families and metadata keys such as [`crate::constants::META_MIN_HEIGHT`]
+//!   (tip height is taken from the in-memory tip; see that method’s docs).
 //! - **Fork-inclusive counts:** `block_count` includes non-canonical blocks (forks), while `canonical_block_count`
 //!   tracks only the current main chain — matching monitoring expectations in SPEC §3.5 wording.
 //! - **`total_size_bytes`:** Rough on-disk live data size (implementation detail left to BLK-012; often
@@ -21,8 +21,8 @@
 
 /// Aggregate storage statistics for monitoring and diagnostics.
 ///
-/// **Construction:** Prefer [`StorageStats::default`] for empty reports, then assign fields, or use a future
-/// `BlockStore::stats` ([`BLK-012`](../../docs/requirements/domains/block_storage/specs/BLK-012.md)).
+/// **Construction:** Prefer [`StorageStats::default`] for empty reports, then assign fields, or call
+/// [`BlockStore::stats`](crate::store::BlockStore::stats) ([`BLK-012`](../../docs/requirements/domains/block_storage/specs/BLK-012.md)).
 ///
 /// **Threading:** Values are typically produced on a single thread and cloned into responses; interior mutability
 /// is unnecessary.
