@@ -25,8 +25,12 @@
 //!
 //! **Semantic links:** NORMATIVE §TYP-003 — `docs/requirements/domains/storage_types/NORMATIVE.md`
 
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+
 use rocksdb::{
-    BlockBasedOptions, ColumnFamilyDescriptor, DBCompactionStyle, DBCompressionType, Options,
+    compaction_filter::Decision, BlockBasedOptions, ColumnFamilyDescriptor, DBCompactionStyle,
+    DBCompressionType, Options,
 };
 
 use crate::config::BlockStoreConfig;
@@ -46,13 +50,21 @@ pub const CHECKPOINTS_TARGET_FILE_SIZE_BASE: u64 = 256 * 1024 * 1024;
 /// **Usage:** [`crate::store::BlockStore::open`], [`crate::store::BlockStore::open_readonly`].
 /// **Invariant:** One descriptor per non-`default` CF name the store manages; the `rocksdb` crate
 /// may still inject a `[default]` CF internally—see its `open_cf_descriptors_internal` implementation.
-pub fn column_family_descriptors(config: &BlockStoreConfig) -> Vec<ColumnFamilyDescriptor> {
+/// Build CF descriptors, optionally with compaction filter for pruning ([`PRN-003`]).
+///
+/// When `prune_threshold` is `Some`, a compaction filter is registered on CF_HEADERS
+/// that drops entries where the deserialized header height is below the threshold.
+/// The threshold is read from the shared `AtomicU64` with `Acquire` ordering.
+pub fn column_family_descriptors(
+    config: &BlockStoreConfig,
+    prune_threshold: Option<Arc<AtomicU64>>,
+) -> Vec<ColumnFamilyDescriptor> {
     ALL_COLUMN_FAMILIES
         .iter()
         .map(|&name| {
             let opts = match name {
                 CF_BLOCKS => blocks_cf_options(config),
-                CF_HEADERS => headers_cf_options(),
+                CF_HEADERS => headers_cf_options(prune_threshold.clone()),
                 CF_ATTESTED => attested_cf_options(),
                 CF_CANONICAL => canonical_cf_options(),
                 CF_CHECKPOINTS => checkpoints_cf_options(),
@@ -77,13 +89,39 @@ pub fn blocks_cf_options(config: &BlockStoreConfig) -> Options {
 }
 
 /// [`CF_HEADERS`]: Level compaction; bloom ([`DEFAULT_BLOOM_BITS_PER_KEY`]); compression off.
-pub fn headers_cf_options() -> Options {
+/// [`CF_HEADERS`]: Level compaction; bloom filter; no compression; optional compaction filter ([`PRN-003`]).
+///
+/// When `prune_threshold` is `Some`, registers a compaction filter that deserializes
+/// the header value (bincode) to extract the block height. If `height < threshold`,
+/// the entry is removed during compaction. This is the secondary cleanup mechanism;
+/// PRN-001 (`prune_before_height`) is the primary.
+pub fn headers_cf_options(prune_threshold: Option<Arc<AtomicU64>>) -> Options {
     let mut block = BlockBasedOptions::default();
     block.set_bloom_filter(f64::from(DEFAULT_BLOOM_BITS_PER_KEY), false);
     let mut opts = Options::default();
     opts.set_compaction_style(DBCompactionStyle::Level);
     opts.set_block_based_table_factory(&block);
     opts.set_compression_type(DBCompressionType::None);
+    if let Some(threshold) = prune_threshold {
+        opts.set_compaction_filter("prn003_header_height_filter", move |_level, _key, value| {
+            let min_height = threshold.load(Ordering::Acquire);
+            if min_height == 0 {
+                return Decision::Keep;
+            }
+            // Attempt to deserialize the header value to extract height.
+            // On deserialization failure, keep the entry (don't drop potentially valid data).
+            match bincode::deserialize::<dig_block::L2BlockHeader>(value) {
+                Ok(header) => {
+                    if header.height < min_height {
+                        Decision::Remove
+                    } else {
+                        Decision::Keep
+                    }
+                }
+                Err(_) => Decision::Keep,
+            }
+        });
+    }
     opts
 }
 
@@ -128,7 +166,7 @@ mod tests {
     fn column_family_descriptors_matches_all_families_count() {
         let cfg = BlockStoreConfig::default();
         assert_eq!(
-            column_family_descriptors(&cfg).len(),
+            column_family_descriptors(&cfg, None).len(),
             ALL_COLUMN_FAMILIES.len()
         );
     }

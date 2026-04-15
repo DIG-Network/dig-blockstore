@@ -206,7 +206,9 @@ pub struct BlockStoreInner {
     /// Evicted on rollback. Bounded by `canonical_height_cache_capacity` (default 10,000).
     /// Cached `META_MIN_HEIGHT` for fast access by rollback validation and compaction filter ([`PRN-004`]).
     /// Loaded from CF_METADATA at startup; updated with `Release` ordering after prune succeeds.
-    min_retained_height_cached: AtomicU64,
+    /// Shared with the compaction filter ([`PRN-003`]) when `enable_compaction_pruning` is true.
+    /// The filter reads this with `Acquire` ordering; `prune_before_height` writes with `Release`.
+    min_retained_height_cached: Arc<AtomicU64>,
     canonical_height_cache: RwLock<std::collections::BTreeMap<u64, Bytes32>>,
     /// Max entries before the lowest-height entry is evicted from [`Self::canonical_height_cache`].
     canonical_height_cache_capacity: usize,
@@ -284,7 +286,13 @@ impl BlockStore {
         let mut opts = Options::default();
         opts.create_if_missing(true);
         opts.create_missing_column_families(true);
-        let cfs = cf_options::column_family_descriptors(&config);
+        // PRN-003: create shared AtomicU64 for compaction filter BEFORE DB open
+        let prune_threshold = if config.enable_compaction_pruning {
+            Some(Arc::new(AtomicU64::new(0)))
+        } else {
+            None
+        };
+        let cfs = cf_options::column_family_descriptors(&config, prune_threshold.clone());
         let db = DB::open_cf_descriptors(&opts, &config.path, cfs)?;
         let db = Arc::new(db);
         let canonical_bin =
@@ -324,7 +332,8 @@ impl BlockStore {
                 pipeline_channel_capacity: config.write_pipeline_channel_capacity.max(1),
                 pipeline_write_batches: AtomicUsize::new(0),
                 canonical_bin,
-                min_retained_height_cached: AtomicU64::new(0),
+                min_retained_height_cached: prune_threshold
+                    .unwrap_or_else(|| Arc::new(AtomicU64::new(0))),
                 canonical_height_cache: RwLock::new(std::collections::BTreeMap::new()),
                 canonical_height_cache_capacity: config.canonical_height_cache_capacity,
                 hash_to_height_cache: Arc::new(ShardedLruCache::new(
@@ -368,7 +377,7 @@ impl BlockStore {
         let use_compression_dict = readonly_cfg.use_compression_dict;
         let max_decompressed_block_bytes = readonly_cfg.max_decompressed_block_bytes;
         let zstd_dictionary_override = readonly_cfg.zstd_dictionary_override.clone();
-        let cfs = cf_options::column_family_descriptors(&readonly_cfg);
+        let cfs = cf_options::column_family_descriptors(&readonly_cfg, None);
         let db = DB::open_cf_descriptors_read_only(&opts, path, cfs, false)?;
         let db = Arc::new(db);
         let canonical_bin = RwLock::new(CanonicalBin::open_synced(&db, path, false)?);
@@ -408,7 +417,7 @@ impl BlockStore {
                 pipeline_channel_capacity: readonly_cfg.write_pipeline_channel_capacity.max(1),
                 pipeline_write_batches: AtomicUsize::new(0),
                 canonical_bin,
-                min_retained_height_cached: AtomicU64::new(0),
+                min_retained_height_cached: Arc::new(AtomicU64::new(0)),
                 canonical_height_cache: RwLock::new(std::collections::BTreeMap::new()),
                 canonical_height_cache_capacity: readonly_cfg.canonical_height_cache_capacity,
                 hash_to_height_cache: Arc::new(ShardedLruCache::new(

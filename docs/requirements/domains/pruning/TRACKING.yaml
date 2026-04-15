@@ -21,9 +21,11 @@ items:
 
   - id: PRN-003
     title: Compaction Filter
-    status: gap
+    status: implemented
     spec_ref: "10.3"
-    notes: "Deferred: rocksdb crate CompactionFilterFactory trait investigation needed"
+    tests:
+      - tests/prn_003_tests.rs
+    notes: "Options::set_compaction_filter on CF_HEADERS; shared Arc<AtomicU64> threshold; bincode deserialize header for height; 5 tests"
 
   - id: PRN-004
     title: min_retained_height Tracking
