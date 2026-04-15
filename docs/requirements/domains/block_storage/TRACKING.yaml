@@ -23,8 +23,9 @@ items:
 
   - id: BLK-004
     title: Get Record by Hash (get_record)
-    status: gap
+    status: done
     spec_ref: "5.2"
+    notes: "get_record: record_cache then header_cache then CF_HEADERS; cf_headers_physical_gets on RocksDB miss; invalidate_record_cache_entry; tests/blk_004_tests.rs"
 
   - id: BLK-005
     title: Batch Retrieval (get_blocks_by_hash)

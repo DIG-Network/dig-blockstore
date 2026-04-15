@@ -56,7 +56,7 @@
 `get_record(&self, hash: &Bytes32) -> Result<Option<BlockRecord>>`
 
 1. MUST check the record cache first (O(1) lookup).
-2. On cache miss, MUST read the header from `CF_HEADERS`, deserialize it, and derive a `BlockRecord` via `from_header()`.
+2. On record-cache miss, MUST obtain a deserialized `L2BlockHeader` — first from the in-memory header cache when present, otherwise by reading and deserializing the row from `CF_HEADERS` — then derive a `BlockRecord` via `from_header()`.
 3. MUST populate the record cache on successful derivation.
 4. `BlockRecord` values are NEVER persisted to disk; they exist only in the in-memory cache.
 5. MUST return `Ok(None)` when no header exists for the given hash.

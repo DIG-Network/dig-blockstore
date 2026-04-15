@@ -4,7 +4,7 @@
 //! - Owns column families in [`crate::constants`] ([`STR-004`](../docs/requirements/domains/crate_structure/specs/STR-004.md)).
 //! - Block bodies: `bincode` + zstd ([`SER-001`](../docs/requirements/domains/serialization/specs/SER-001.md)); headers: `bincode` only ([`SER-002`](../docs/requirements/domains/serialization/specs/SER-002.md)).
 //! - Tip / genesis metadata: [`crate::constants::META_TIP`], [`crate::constants::META_GENESIS_HASH`].
-//! - [`BlockRecord`](crate::BlockRecord) cache: in-memory only ([`BLK-001`](../docs/requirements/domains/block_storage/specs/BLK-001.md), [`TYP-004`](../docs/requirements/domains/storage_types/specs/TYP-004.md)).
+//! - [`BlockRecord`](crate::BlockRecord) cache: in-memory only ([`BLK-001`](../docs/requirements/domains/block_storage/specs/BLK-001.md), [`BLK-004`](../docs/requirements/domains/block_storage/specs/BLK-004.md), [`TYP-004`](../docs/requirements/domains/storage_types/specs/TYP-004.md)).
 //! - Block body cache: [`crate::cache::sharded::ShardedBlockCache`] ([`BLK-002`](../docs/requirements/domains/block_storage/specs/BLK-002.md), [`CAC-001`](../docs/requirements/domains/caching/specs/CAC-001_sharded_block_cache.md)).
 //! - Header cache: [`crate::cache::sharded::ShardedHeaderCache`] ([`BLK-003`](../docs/requirements/domains/block_storage/specs/BLK-003.md), [`CAC-002`](../docs/requirements/domains/caching/specs/CAC-002_sharded_header_cache.md)).
 //!
@@ -69,7 +69,8 @@ pub struct BlockStore {
     ///
     /// **Separate** from [`Self::block_cache`] per BLK-003 implementation notes (tunables: [`BlockStoreConfig::header_cache_capacity`](crate::BlockStoreConfig::header_cache_capacity)).
     header_cache: Arc<ShardedHeaderCache>,
-    /// Count of RocksDB `get_cf` calls against [`CF_HEADERS`] from [`Self::get_header`] after a header-cache miss.
+    /// Count of RocksDB `get_cf` calls against [`CF_HEADERS`] after **both** [`Self::header_cache`] and
+    /// [`Self::record_cache`] miss — incremented by [`Self::get_header`] and by [`Self::get_record`] ([`BLK-003`](../docs/requirements/domains/block_storage/specs/BLK-003.md), [`BLK-004`](../docs/requirements/domains/block_storage/specs/BLK-004.md)).
     cf_headers_physical_gets: AtomicUsize,
 }
 
@@ -325,8 +326,7 @@ impl BlockStore {
             return Ok(Some(block));
         }
         let cf = self.cf(CF_BLOCKS)?;
-        self.cf_blocks_physical_gets
-            .fetch_add(1, Ordering::Relaxed);
+        self.cf_blocks_physical_gets.fetch_add(1, Ordering::Relaxed);
         let raw_opt = self.db.get_cf(cf, hash_key(hash).as_slice())?;
         let Some(raw) = raw_opt else {
             return Ok(None);
@@ -376,7 +376,11 @@ impl BlockStore {
         self.header_cache.remove(hash);
     }
 
-    /// Count of RocksDB [`CF_HEADERS`] reads from [`Self::get_header`] after a header-cache miss.
+    /// Count of RocksDB [`CF_HEADERS`] `get_cf` calls from [`Self::get_header`] or [`Self::get_record`]
+    /// when the in-memory header **and** record caches do not already supply the header/record ([`BLK-003`](../docs/requirements/domains/block_storage/specs/BLK-003.md), [`BLK-004`](../docs/requirements/domains/block_storage/specs/BLK-004.md)).
+    ///
+    /// **Note:** [`Self::get_record`] consults [`Self::header_cache`] before touching RocksDB, so a record-cache
+    /// miss with a warm header cache does **not** increment this counter (still satisfies “derive from header”).
     pub fn cf_headers_physical_get_count(&self) -> u64 {
         self.cf_headers_physical_gets.load(Ordering::Relaxed) as u64
     }
@@ -430,10 +434,19 @@ impl BlockStore {
         self.put_block(block, canonical)
     }
 
-    /// Look up [`BlockRecord`] by hash: **cache first**, then [`CF_HEADERS`] + [`BlockRecord::from_header`] on miss
-    /// ([`BLK-004`](../docs/requirements/domains/block_storage/specs/BLK-004.md) will extend status / eviction policy).
+    /// Look up [`BlockRecord`] by hash ([`BLK-004`](../docs/requirements/domains/block_storage/specs/BLK-004.md)).
     ///
-    /// **Read-only stores:** Cache starts empty; the first hit populates from persisted headers without mutating RocksDB.
+    /// **Order**
+    /// 1. [`Self::record_cache`] (Mutex map) — clone on hit; **no** RocksDB I/O.
+    /// 2. [`Self::header_cache`] — if the header is already deserialized (e.g. after [`Self::put_block`] or
+    ///    [`Self::get_header`]), derive [`BlockRecord::from_header`] with [`BlockStatus::Validated`] and insert into
+    ///    the record cache; **no** RocksDB `get_cf` on [`CF_HEADERS`].
+    /// 3. Else load raw bytes from [`CF_HEADERS`], increment [`Self::cf_headers_physical_gets`], deserialize via
+    ///    [`Self::deserialize_header`], warm [`Self::header_cache`] + record cache.
+    ///
+    /// **Persistence:** [`BlockRecord`] is never written to any column family ([`TYP-004`](../docs/requirements/domains/storage_types/specs/TYP-004.md)); only headers live under [`CF_HEADERS`].
+    ///
+    /// **Read-only stores:** Record/header RAM caches start empty; the first lookup may read [`CF_HEADERS`] and populate both caches without mutating on-disk layout beyond normal reads.
     pub fn get_record(&self, hash: &Bytes32) -> Result<Option<BlockRecord>, BlockStoreError> {
         {
             let guard = self.record_cache.lock();
@@ -441,16 +454,28 @@ impl BlockStore {
                 return Ok(Some(r.clone()));
             }
         }
+        if let Some(header) = self.header_cache.get_clone(hash) {
+            let record = BlockRecord::from_header(&header, BlockStatus::Validated);
+            self.record_cache.lock().insert(*hash, record.clone());
+            return Ok(Some(record));
+        }
         let cf = self.cf(CF_HEADERS)?;
+        self.cf_headers_physical_gets
+            .fetch_add(1, Ordering::Relaxed);
         let Some(bytes) = self.db.get_cf(cf, hash_key(hash).as_slice())? else {
             return Ok(None);
         };
         let header = Self::deserialize_header(&bytes)?;
         self.header_cache.insert(*hash, header.clone());
         let record = BlockRecord::from_header(&header, BlockStatus::Validated);
-        let mut guard = self.record_cache.lock();
-        guard.insert(*hash, record.clone());
+        self.record_cache.lock().insert(*hash, record.clone());
         Ok(Some(record))
+    }
+
+    /// Remove one hash from the in-memory [`BlockRecord`] map — **no RocksDB writes** ([`BLK-004`](../docs/requirements/domains/block_storage/specs/BLK-004.md) test plan: simulate record-cache eviction).
+    pub fn invalidate_record_cache_entry(&self, hash: &Bytes32) {
+        let mut guard = self.record_cache.lock();
+        let _ = guard.remove(hash);
     }
 
     /// Count blocks persisted in [`CF_BLOCKS`] ([`SER-005`](../docs/requirements/domains/serialization/specs/SER-005.md) threshold).
