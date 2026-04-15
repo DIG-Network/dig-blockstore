@@ -102,11 +102,11 @@ After completing a requirement: write tests, verify they pass, update TRACKING.y
 
 ## Phase 10: Pruning
 
-- [ ] PRN-001 — prune_before_height (remove blocks/headers/records/attestations)
-- [ ] PRN-002 — prune_checkpoints_before_epoch
+- [x] PRN-001 — prune_before_height (remove blocks/headers/records/attestations)
+- [x] PRN-002 — prune_checkpoints_before_epoch
 - [ ] PRN-003 — Compaction filter (background pruning during RocksDB compaction)
-- [ ] PRN-004 — min_retained_height tracking (update on prune, persist in CF_METADATA)
-- [ ] PRN-005 — Non-canonical block pruning
+- [x] PRN-004 — min_retained_height tracking (update on prune, persist in CF_METADATA)
+- [x] PRN-005 — Non-canonical block pruning
 
 ## Phase 11: Snapshot
 

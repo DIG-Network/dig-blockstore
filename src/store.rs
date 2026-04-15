@@ -76,7 +76,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -204,6 +204,9 @@ pub struct BlockStoreInner {
     /// **BTreeMap** provides O(log n) lookup and ordered iteration for range queries.
     /// Populated from `set_canonical`, `put_block(canonical=true)`, and `get_hash_by_height` read-through.
     /// Evicted on rollback. Bounded by `canonical_height_cache_capacity` (default 10,000).
+    /// Cached `META_MIN_HEIGHT` for fast access by rollback validation and compaction filter ([`PRN-004`]).
+    /// Loaded from CF_METADATA at startup; updated with `Release` ordering after prune succeeds.
+    min_retained_height_cached: AtomicU64,
     canonical_height_cache: RwLock<std::collections::BTreeMap<u64, Bytes32>>,
     /// Max entries before the lowest-height entry is evicted from [`Self::canonical_height_cache`].
     canonical_height_cache_capacity: usize,
@@ -321,6 +324,7 @@ impl BlockStore {
                 pipeline_channel_capacity: config.write_pipeline_channel_capacity.max(1),
                 pipeline_write_batches: AtomicUsize::new(0),
                 canonical_bin,
+                min_retained_height_cached: AtomicU64::new(0),
                 canonical_height_cache: RwLock::new(std::collections::BTreeMap::new()),
                 canonical_height_cache_capacity: config.canonical_height_cache_capacity,
                 hash_to_height_cache: Arc::new(ShardedLruCache::new(
@@ -330,6 +334,10 @@ impl BlockStore {
             }),
             pipeline_tx: Arc::new(tokio::sync::Mutex::new(None)),
         };
+        // PRN-004: load persisted min_retained_height into AtomicU64
+        if let Ok(Some(h)) = store.read_min_retained_height() {
+            store.min_retained_height_cached.store(h, Ordering::Release);
+        }
         // CAC-006: warm ALL caches after full construction. get_block_by_height and
         // get_record_by_height auto-populate block_cache, header_cache, record_cache,
         // canonical_height_cache (CAC-004), and hash_to_height_cache (CAC-005).
@@ -377,7 +385,7 @@ impl BlockStore {
             readonly_cfg.header_cache_capacity,
             shards,
         ));
-        Ok(Self {
+        let store = Self {
             inner: Arc::new(BlockStoreInner {
                 db,
                 read_only: true,
@@ -400,6 +408,7 @@ impl BlockStore {
                 pipeline_channel_capacity: readonly_cfg.write_pipeline_channel_capacity.max(1),
                 pipeline_write_batches: AtomicUsize::new(0),
                 canonical_bin,
+                min_retained_height_cached: AtomicU64::new(0),
                 canonical_height_cache: RwLock::new(std::collections::BTreeMap::new()),
                 canonical_height_cache_capacity: readonly_cfg.canonical_height_cache_capacity,
                 hash_to_height_cache: Arc::new(ShardedLruCache::new(
@@ -408,7 +417,12 @@ impl BlockStore {
                 )),
             }),
             pipeline_tx: Arc::new(tokio::sync::Mutex::new(None)),
-        })
+        };
+        // PRN-004: load persisted min_retained_height
+        if let Ok(Some(h)) = store.read_min_retained_height() {
+            store.min_retained_height_cached.store(h, Ordering::Release);
+        }
+        Ok(store)
     }
 
     /// Initialize genesis: empty store only; atomic [`WriteBatch`] ([`STR-004`](../docs/requirements/domains/crate_structure/specs/STR-004.md)).
@@ -925,6 +939,10 @@ impl BlockStore {
     /// [`get_record_by_height`](Self::get_record_by_height), and
     /// [`get_epoch_block_hashes`](Self::get_epoch_block_hashes) all delegate through this.
     pub fn get_hash_by_height(&self, height: u64) -> Result<Option<Bytes32>, BlockStoreError> {
+        // PRN guard: pruned heights should not resolve even if stale mmap data exists
+        if height < self.min_retained_height_cached.load(Ordering::Acquire) {
+            return Ok(None);
+        }
         // Tier 0: CAC-004 in-memory BTreeMap (fastest, O(log n) with no I/O)
         if let Some(hash) = self.canonical_height_cache.read().get(&height).copied() {
             return Ok(Some(hash));
@@ -1465,8 +1483,12 @@ impl BlockStore {
     /// After [`PRN-001`] runs, this reflects the `META_MIN_HEIGHT` value in `CF_METADATA`.
     ///
     /// **Requirement:** [`ROR-005`](../docs/requirements/domains/rollback_reorg/specs/ROR-005.md).
+    /// Public accessor for the pruning floor: minimum retained block height.
+    ///
+    /// Returns `0` when no pruning has occurred (all heights retained).
+    /// Uses the cached [`AtomicU64`] for fast lock-free access ([`PRN-004`]).
     pub fn min_retained_height(&self) -> Result<u64, BlockStoreError> {
-        Ok(self.read_min_retained_height()?.unwrap_or(0))
+        Ok(self.min_retained_height_cached.load(Ordering::Acquire))
     }
 
     /// Read-only preview: which canonical blocks would be reverted by a rollback to `target_height`.
@@ -1918,6 +1940,146 @@ impl BlockStore {
             result.push(checkpoint);
         }
         Ok(result)
+    }
+
+    // -----------------------------------------------------------------------
+    // Pruning (PRN domain)
+    // -----------------------------------------------------------------------
+
+    /// Remove all blocks, headers, attestations, and canonical entries below `height`.
+    ///
+    /// # Algorithm ([`PRN-001`](../docs/requirements/domains/pruning/specs/PRN-001_prune_before_height.md))
+    ///
+    /// 1. Iterate `CF_CANONICAL` from `min_retained_height` to `height - 1`, collecting hashes.
+    /// 2. Also scan `CF_HEADERS` for non-canonical blocks below `height` ([`PRN-005`]).
+    /// 3. Single `WriteBatch` deletes from CF_BLOCKS, CF_HEADERS, CF_ATTESTED, CF_CANONICAL.
+    /// 4. Update `META_MIN_HEIGHT` in the same batch.
+    /// 5. Post-commit: evict from all caches, update `AtomicU64`.
+    ///
+    /// # Returns
+    ///
+    /// Count of blocks pruned (canonical + non-canonical).
+    pub fn prune_before_height(&self, height: u64) -> Result<usize, BlockStoreError> {
+        if self.read_only {
+            return Err(BlockStoreError::Serialization(
+                ERR_MUTATION_READ_ONLY.into(),
+            ));
+        }
+        let current_min = self.min_retained_height()?;
+        if height <= current_min {
+            return Ok(0);
+        }
+
+        let cf_b = self.cf(CF_BLOCKS)?;
+        let cf_h = self.cf(CF_HEADERS)?;
+        let cf_a = self.cf(CF_ATTESTED)?;
+        let cf_c = self.cf(CF_CANONICAL)?;
+        let cf_meta = self.cf(CF_METADATA)?;
+
+        let mut batch = WriteBatch::default();
+        let mut pruned_hashes: Vec<Bytes32> = Vec::new();
+
+        // Phase 1: Canonical blocks below target height
+        for h in current_min..height {
+            if let Some(hash) = self.get_hash_by_height(h)? {
+                batch.delete_cf(cf_b, hash_key(&hash).as_slice());
+                batch.delete_cf(cf_h, hash_key(&hash).as_slice());
+                batch.delete_cf(cf_a, hash_key(&hash).as_slice());
+                batch.delete_cf(cf_c, height_key(h));
+                pruned_hashes.push(hash);
+            }
+        }
+
+        // Phase 2 (PRN-005): Non-canonical blocks — scan CF_HEADERS for blocks below height
+        // that were NOT already collected in the canonical pass.
+        let canonical_set: std::collections::HashSet<Bytes32> =
+            pruned_hashes.iter().copied().collect();
+        let header_iter = self.db.iterator_cf(cf_h, IteratorMode::Start);
+        for item in header_iter {
+            let (key_bytes, value_bytes) = item?;
+            if key_bytes.len() != 32 {
+                continue;
+            }
+            let arr: [u8; 32] = key_bytes.as_ref().try_into().unwrap_or([0; 32]);
+            let hash = Bytes32::new(arr);
+            if canonical_set.contains(&hash) {
+                continue; // already handled in canonical pass
+            }
+            // Deserialize header to check height
+            if let Ok(header) = Self::deserialize_header(&value_bytes) {
+                if header.height < height {
+                    batch.delete_cf(cf_b, hash_key(&hash).as_slice());
+                    batch.delete_cf(cf_h, hash_key(&hash).as_slice());
+                    batch.delete_cf(cf_a, hash_key(&hash).as_slice());
+                    pruned_hashes.push(hash);
+                }
+            }
+        }
+
+        // Update META_MIN_HEIGHT in the same batch
+        batch.put_cf(cf_meta, META_MIN_HEIGHT.as_bytes(), &height.to_le_bytes());
+
+        let count = pruned_hashes.len();
+        self.db.write(batch)?;
+
+        // Post-commit: update AtomicU64
+        self.min_retained_height_cached
+            .store(height, Ordering::Release);
+
+        // Post-commit: evict from all caches
+        for hash in &pruned_hashes {
+            self.block_cache.remove(hash);
+            self.header_cache.remove(hash);
+            self.record_cache.lock().remove(hash);
+            self.hash_to_height_cache.remove(hash);
+        }
+        // Evict canonical height cache entries below height
+        {
+            let mut hcache = self.canonical_height_cache.write();
+            let to_remove: Vec<u64> = hcache.range(..height).map(|(&h, _)| h).collect();
+            for h in to_remove {
+                hcache.remove(&h);
+            }
+        }
+
+        Ok(count)
+    }
+
+    /// Remove all checkpoints with epoch < `epoch` from CF_CHECKPOINTS.
+    ///
+    /// Returns the count of pruned checkpoints.
+    ///
+    /// **Requirement:** [`PRN-002`](../docs/requirements/domains/pruning/specs/PRN-002_prune_checkpoints_before_epoch.md).
+    pub fn prune_checkpoints_before_epoch(&self, epoch: u64) -> Result<usize, BlockStoreError> {
+        if self.read_only {
+            return Err(BlockStoreError::Serialization(
+                ERR_MUTATION_READ_ONLY.into(),
+            ));
+        }
+        if epoch == 0 {
+            return Ok(0);
+        }
+        let cf = self.cf(CF_CHECKPOINTS)?;
+        let mut batch = WriteBatch::default();
+        let mut count = 0usize;
+        let iter = self.db.iterator_cf(cf, IteratorMode::Start);
+        for item in iter {
+            let (key_bytes, _value) = item?;
+            if key_bytes.len() != 8 {
+                continue;
+            }
+            let key_arr: [u8; 8] = key_bytes.as_ref().try_into().unwrap_or([0; 8]);
+            let e = crate::encoding::decode_epoch_key(&key_arr);
+            if e >= epoch {
+                break;
+            }
+            batch.delete_cf(cf, key_bytes.as_ref());
+            count += 1;
+        }
+        if count > 0 {
+            self.db.write(batch)?;
+        }
+        Ok(count)
     }
 
     /// Async batched ingest ([`BLK-008`](../docs/requirements/domains/block_storage/specs/BLK-008.md), [`IMPLEMENTATION_ORDER.md`](../docs/requirements/IMPLEMENTATION_ORDER.md) Phase 5).

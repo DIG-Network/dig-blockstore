@@ -5,25 +5,38 @@ crate: dig-blockstore
 items:
   - id: PRN-001
     title: Prune Before Height (prune_before_height)
-    status: gap
+    status: implemented
     spec_ref: "10.1"
+    tests:
+      - tests/prn_001_tests.rs
+    notes: "WriteBatch deletes CF_BLOCKS/CF_HEADERS/CF_ATTESTED/CF_CANONICAL + META_MIN_HEIGHT; cache eviction; 5 tests"
 
   - id: PRN-002
     title: Prune Checkpoints Before Epoch (prune_checkpoints_before_epoch)
-    status: gap
+    status: implemented
     spec_ref: "10.2"
+    tests:
+      - tests/prn_002_tests.rs
+    notes: "Forward iterator + delete; epoch 0 noop; 3 tests"
 
   - id: PRN-003
     title: Compaction Filter
     status: gap
     spec_ref: "10.3"
+    notes: "Deferred: rocksdb crate CompactionFilterFactory trait investigation needed"
 
   - id: PRN-004
     title: min_retained_height Tracking
-    status: gap
+    status: implemented
     spec_ref: "10.4"
+    tests:
+      - tests/prn_004_tests.rs
+    notes: "AtomicU64 cached on BlockStoreInner; loaded from CF_METADATA on open; updated with Release ordering; 3 tests"
 
   - id: PRN-005
     title: Non-Canonical Block Pruning
-    status: gap
+    status: implemented
     spec_ref: "10.1"
+    tests:
+      - tests/prn_005_tests.rs
+    notes: "Integrated into prune_before_height; CF_HEADERS scan for fork blocks; 3 tests"
