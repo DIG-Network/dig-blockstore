@@ -47,8 +47,9 @@ items:
 
   - id: BLK-008
     title: Write Pipeline (put_pipelined)
-    status: gap
+    status: done
     spec_ref: "5.1.1"
+    notes: "put_pipelined → oneshot ack; bounded mpsc ingress on BlockStore (not Inner) so drop closes channel (AC §8); run_write_pipeline batches WriteBatch; pipeline_write_batch_count; tests/blk_008_tests.rs"
 
   - id: BLK-009
     title: Attestation Storage

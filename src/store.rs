@@ -53,6 +53,7 @@
 //! - [`BLK-005`](../docs/requirements/domains/block_storage/specs/BLK-005.md) — `get_blocks_by_hash` batch retrieval.
 //! - [`BLK-006`](../docs/requirements/domains/block_storage/specs/BLK-006.md) — `stream_blocks_in_range` sequential readahead.
 //! - [`BLK-007`](../docs/requirements/domains/block_storage/specs/BLK-007.md) — async read wrappers (`get_block_async`, …).
+//! - [`BLK-008`](../docs/requirements/domains/block_storage/specs/BLK-008.md) — async write pipeline (`put_pipelined`, batched `WriteBatch`).
 //! - [`SER-001`](../docs/requirements/domains/serialization/specs/SER-001.md) — bincode + zstd block serialization.
 //! - [`SER-002`](../docs/requirements/domains/serialization/specs/SER-002.md) — bincode-only header serialization.
 //! - [`SER-005`](../docs/requirements/domains/serialization/specs/SER-005.md) — dictionary training and persistence.
@@ -62,10 +63,13 @@
 //!
 //! **Spec:** `docs/resources/SPEC.md` §15.1 (constructors), §16 (crate boundary).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
+
+use tokio::sync::{mpsc, oneshot};
 
 use chia_protocol::Bytes32;
 use dig_block::{BlockStatus, L2Block, L2BlockHeader};
@@ -86,6 +90,17 @@ use crate::error::{
 };
 use crate::types::{BlockRecord, ChainTip};
 use crate::BlockStoreConfig;
+
+/// One ingress job for [`run_write_pipeline`]: own the [`L2Block`], canonical flag, and per-block ack channel
+/// ([`BLK-008`](../docs/requirements/domains/block_storage/specs/BLK-008.md) + [`IMPLEMENTATION_ORDER.md`](../docs/requirements/IMPLEMENTATION_ORDER.md) Phase 5).
+///
+/// **Ack semantics:** `Ok(true)` means a **new** row was written to [`CF_BLOCKS`]; `Ok(false)` matches [`put_block`](BlockStore::put_block)
+/// idempotency (duplicate hash on disk or duplicate within the same batch).
+type PipelineJob = (
+    L2Block,
+    bool,
+    oneshot::Sender<Result<bool, BlockStoreError>>,
+);
 
 /// Shared RocksDB + cache state behind [`BlockStore`].
 ///
@@ -157,6 +172,14 @@ pub struct BlockStoreInner {
     /// Count of RocksDB `get_cf` calls against [`CF_HEADERS`] after **both** [`Self::header_cache`] and
     /// [`Self::record_cache`] miss — incremented by [`BlockStore::get_header`] and by [`BlockStore::get_record`] ([`BLK-003`](../docs/requirements/domains/block_storage/specs/BLK-003.md), [`BLK-004`](../docs/requirements/domains/block_storage/specs/BLK-004.md)).
     cf_headers_physical_gets: AtomicUsize,
+    /// Max jobs per RocksDB [`WriteBatch`] flush ([`BlockStoreConfig::write_pipeline_batch_size`](crate::BlockStoreConfig::write_pipeline_batch_size)).
+    pipeline_batch_size: usize,
+    /// Partial-batch flush timer ([`BlockStoreConfig::write_pipeline_flush_ms`](crate::BlockStoreConfig::write_pipeline_flush_ms)).
+    pipeline_flush_ms: u64,
+    /// Bounded channel depth ([`BlockStoreConfig::write_pipeline_channel_capacity`](crate::BlockStoreConfig::write_pipeline_channel_capacity)).
+    pipeline_channel_capacity: usize,
+    /// Count of successful [`DB::write`](rocksdb::DB::write) calls issued **only** by the pipeline worker ([`tests/blk_008_tests.rs`]).
+    pipeline_write_batches: AtomicUsize,
 }
 
 /// Primary handle for all block persistence APIs.
@@ -174,14 +197,29 @@ pub struct BlockStoreInner {
 /// Thin [`Arc`] around [`BlockStoreInner`]: cheap [`Clone`] for [`tokio::task::spawn_blocking`] dispatch ([`BLK-007`](../docs/requirements/domains/block_storage/specs/BLK-007.md)).
 /// Field access on `&BlockStore` transparently reaches [`BlockStoreInner`] via [`std::ops::Deref`].
 ///
+/// **Write pipeline ([`BLK-008`](../docs/requirements/domains/block_storage/specs/BLK-008.md)):** [`Self::pipeline_tx`]
+/// holds the lazy [`mpsc::Sender`] **outside** [`BlockStoreInner`]. The worker task also keeps an [`Arc`] to `inner`
+/// for RocksDB; if the sender lived on `inner`, dropping all [`BlockStore`] handles would still leave the sender
+/// alive (circular retention), the channel would never close, and AC §8 “flush on shutdown” would not run.
+///
 /// # Construction
 ///
 /// Use [`BlockStore::open`] for read-write access or [`BlockStore::open_readonly`] for read-only
 /// access to an existing database. After construction, call [`BlockStore::init_genesis`] once
 /// to initialize a new chain.
-#[derive(Clone)]
 pub struct BlockStore {
     inner: Arc<BlockStoreInner>,
+    /// Lazy bounded ingress for [`Self::put_pipelined`] — **not** stored on [`BlockStoreInner`] (see struct docs).
+    pipeline_tx: Arc<tokio::sync::Mutex<Option<mpsc::Sender<PipelineJob>>>>,
+}
+
+impl Clone for BlockStore {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+            pipeline_tx: self.pipeline_tx.clone(),
+        }
+    }
 }
 
 impl std::ops::Deref for BlockStore {
@@ -246,7 +284,12 @@ impl BlockStore {
                 readahead_size,
                 header_cache,
                 cf_headers_physical_gets: AtomicUsize::new(0),
+                pipeline_batch_size: config.write_pipeline_batch_size.max(1),
+                pipeline_flush_ms: config.write_pipeline_flush_ms.max(1),
+                pipeline_channel_capacity: config.write_pipeline_channel_capacity.max(1),
+                pipeline_write_batches: AtomicUsize::new(0),
             }),
+            pipeline_tx: Arc::new(tokio::sync::Mutex::new(None)),
         })
     }
 
@@ -304,7 +347,12 @@ impl BlockStore {
                 readahead_size,
                 header_cache,
                 cf_headers_physical_gets: AtomicUsize::new(0),
+                pipeline_batch_size: readonly_cfg.write_pipeline_batch_size.max(1),
+                pipeline_flush_ms: readonly_cfg.write_pipeline_flush_ms.max(1),
+                pipeline_channel_capacity: readonly_cfg.write_pipeline_channel_capacity.max(1),
+                pipeline_write_batches: AtomicUsize::new(0),
             }),
+            pipeline_tx: Arc::new(tokio::sync::Mutex::new(None)),
         })
     }
 
@@ -744,6 +792,72 @@ impl BlockStore {
         self.put_block(block, canonical)
     }
 
+    /// Async batched ingest ([`BLK-008`](../docs/requirements/domains/block_storage/specs/BLK-008.md), [`IMPLEMENTATION_ORDER.md`](../docs/requirements/IMPLEMENTATION_ORDER.md) Phase 5).
+    ///
+    /// **Channel + batching (NORMATIVE §1–3):** Enqueues into a bounded [`mpsc`] queue; a background task accumulates
+    /// up to [`BlockStoreInner::pipeline_batch_size`] jobs or until [`BlockStoreInner::pipeline_flush_ms`] elapses,
+    /// then applies **one** [`WriteBatch`] mirroring [`Self::put_block`] semantics.
+    ///
+    /// **Per-block ack ([`IMPLEMENTATION_ORDER.md`](../docs/requirements/IMPLEMENTATION_ORDER.md)):** The returned
+    /// [`oneshot::Receiver`] resolves to the same `Result<bool, BlockStoreError>` shape as [`Self::put_block`]
+    /// (`Ok(true)` inserted, `Ok(false)` duplicate).
+    ///
+    /// **Runtime contract:** The first call lazily spawns [`run_write_pipeline`] via [`tokio::spawn`]; therefore an
+    /// active [`tokio::runtime::Handle`] must exist (integration tests should use `#[tokio::test]`).
+    pub async fn put_pipelined(
+        &self,
+        block: L2Block,
+        canonical: bool,
+    ) -> Result<oneshot::Receiver<Result<bool, BlockStoreError>>, BlockStoreError> {
+        if self.read_only {
+            return Err(BlockStoreError::Serialization(
+                ERR_MUTATION_READ_ONLY.into(),
+            ));
+        }
+        let tx = self.pipeline_sender().await?;
+        let (ack_tx, ack_rx) = oneshot::channel();
+        tx.send((block, canonical, ack_tx))
+            .await
+            .map_err(|_| BlockStoreError::PipelineClosed)?;
+        Ok(ack_rx)
+    }
+
+    /// Count of successful RocksDB [`WriteBatch`] commits executed by the [`BLK-008`](../docs/requirements/domains/block_storage/specs/BLK-008.md) worker.
+    ///
+    /// **Instrumentation:** Used by `tests/blk_008_tests.rs` to prove AC §4 “single `WriteBatch` per flush interval”.
+    #[must_use]
+    pub fn pipeline_write_batch_count(&self) -> u64 {
+        self.pipeline_write_batches.load(Ordering::Relaxed) as u64
+    }
+
+    /// Lazily constructs the bounded [`mpsc`] sender and spawns [`run_write_pipeline`].
+    async fn pipeline_sender(&self) -> Result<mpsc::Sender<PipelineJob>, BlockStoreError> {
+        let mut guard = self.pipeline_tx.lock().await;
+        if let Some(tx) = guard.as_ref() {
+            return Ok(tx.clone());
+        }
+        let _handle = tokio::runtime::Handle::try_current().map_err(|_| {
+            BlockStoreError::Serialization(
+                "put_pipelined requires an active Tokio runtime (use #[tokio::test] or Runtime::block_on)"
+                    .into(),
+            )
+        })?;
+        let cap = self.pipeline_channel_capacity;
+        let (tx, rx) = mpsc::channel::<PipelineJob>(cap);
+        let inner = self.inner.clone();
+        let batch = self.pipeline_batch_size;
+        let flush_ms = self.pipeline_flush_ms;
+        tokio::spawn(run_write_pipeline(
+            inner,
+            Arc::new(tokio::sync::Mutex::new(None)),
+            rx,
+            batch,
+            flush_ms,
+        ));
+        *guard = Some(tx.clone());
+        Ok(tx)
+    }
+
     /// Look up [`BlockRecord`] by hash ([`BLK-004`](../docs/requirements/domains/block_storage/specs/BLK-004.md)).
     ///
     /// **Order**
@@ -978,6 +1092,233 @@ impl BlockStore {
             .cf_handle(name)
             .ok_or_else(|| BlockStoreError::Serialization(format!("missing column family {name}")))
     }
+}
+
+/// Background loop draining [`PipelineJob`] values into batched [`WriteBatch`] commits ([`BLK-008`](../docs/requirements/domains/block_storage/specs/BLK-008.md)).
+///
+/// **Shutdown (AC §8):** Ingress senders live on [`BlockStore::pipeline_tx`], not on [`BlockStoreInner`]. When the last
+/// [`BlockStore`] clone is dropped, the final [`mpsc::Sender`] is released, `rx.recv()` yields `None`, and we
+/// [`flush_pipeline_batch`] any tail buffer before exiting.
+async fn run_write_pipeline(
+    inner: Arc<BlockStoreInner>,
+    _worker_unused_pipeline_tx: Arc<tokio::sync::Mutex<Option<mpsc::Sender<PipelineJob>>>>,
+    mut rx: mpsc::Receiver<PipelineJob>,
+    batch_size: usize,
+    flush_ms: u64,
+) {
+    // The real ingress [`mpsc::Sender`] lives on user-facing [`BlockStore`] handles; this placeholder exists only so
+    // we can reuse [`BlockStore`] / [`Deref`] helpers inside [`flush_pipeline_batch`] without threading a parallel
+    // “inner-only” facade type through the module.
+    let store = BlockStore {
+        inner,
+        pipeline_tx: _worker_unused_pipeline_tx,
+    };
+    let mut buf: Vec<PipelineJob> = Vec::with_capacity(batch_size);
+    let tick = Duration::from_millis(flush_ms);
+
+    loop {
+        match rx.recv().await {
+            None => {
+                return;
+            }
+            Some(job) => buf.push(job),
+        }
+        if buf.len() >= batch_size {
+            let _ = flush_pipeline_batch(&store, &mut buf);
+            buf.clear();
+            continue;
+        }
+
+        let mut sleep = Box::pin(tokio::time::sleep(tick));
+        'collect: loop {
+            tokio::select! {
+                biased;
+                maybe = rx.recv() => {
+                    match maybe {
+                        None => {
+                            let _ = flush_pipeline_batch(&store, &mut buf);
+                            return;
+                        }
+                        Some(job) => {
+                            buf.push(job);
+                            if buf.len() >= batch_size {
+                                break 'collect;
+                            }
+                        }
+                    }
+                }
+                _ = &mut sleep, if !buf.is_empty() => {
+                    break 'collect;
+                }
+            }
+        }
+
+        let _ = flush_pipeline_batch(&store, &mut buf);
+        buf.clear();
+    }
+}
+
+/// Applies one RocksDB [`WriteBatch`] for all novel inserts in `jobs`, mirroring [`BlockStore::put_block`].
+///
+/// **Idempotency (AC §5):** Duplicate hashes already on disk **or** repeated within `jobs` are answered with
+/// `Ok(false)` acks and are omitted from the write batch. A completely duplicate batch performs **no** `db.write`.
+///
+/// **Errors:** Build/IO failures notify every still-pending staged [`oneshot`] with [`BlockStoreError::Serialization`]
+/// carrying the diagnostic string, then the function returns `Ok(())` so the worker loop keeps draining (best-effort
+/// bulk ingest semantics; callers observe failure on their ack channel).
+fn flush_pipeline_batch(
+    store: &BlockStore,
+    jobs: &mut Vec<PipelineJob>,
+) -> Result<(), BlockStoreError> {
+    if store.read_only {
+        let pending: Vec<PipelineJob> = std::mem::take(jobs);
+        let msg = ERR_MUTATION_READ_ONLY.to_string();
+        for (_, _, ack) in pending {
+            let _ = ack.send(Err(BlockStoreError::Serialization(msg.clone())));
+        }
+        return Ok(());
+    }
+    let pending: Vec<PipelineJob> = std::mem::take(jobs);
+    let cf_b = match store.cf(CF_BLOCKS) {
+        Ok(c) => c,
+        Err(e) => {
+            let msg = e.to_string();
+            for (_, _, ack) in pending {
+                let _ = ack.send(Err(BlockStoreError::Serialization(format!(
+                    "write pipeline: {msg}"
+                ))));
+            }
+            return Ok(());
+        }
+    };
+    let cf_h = match store.cf(CF_HEADERS) {
+        Ok(c) => c,
+        Err(e) => {
+            let msg = e.to_string();
+            for (_, _, ack) in pending {
+                let _ = ack.send(Err(BlockStoreError::Serialization(format!(
+                    "write pipeline: {msg}"
+                ))));
+            }
+            return Ok(());
+        }
+    };
+    let cf_c = match store.cf(CF_CANONICAL) {
+        Ok(c) => c,
+        Err(e) => {
+            let msg = e.to_string();
+            for (_, _, ack) in pending {
+                let _ = ack.send(Err(BlockStoreError::Serialization(format!(
+                    "write pipeline: {msg}"
+                ))));
+            }
+            return Ok(());
+        }
+    };
+
+    let mut seen: HashSet<Bytes32> = HashSet::new();
+    struct StagedRow {
+        hash: Bytes32,
+        block: L2Block,
+        compressed: Vec<u8>,
+        header_bytes: Vec<u8>,
+        canonical: bool,
+        ack: oneshot::Sender<Result<bool, BlockStoreError>>,
+    }
+    let mut staged: Vec<StagedRow> = Vec::new();
+
+    for (block, canonical, ack) in pending {
+        let hash = block.hash();
+        if !seen.insert(hash) {
+            let _ = ack.send(Ok(false));
+            continue;
+        }
+        let exists = match store.db.get_cf(cf_b, hash_key(&hash).as_slice()) {
+            Ok(o) => o.is_some(),
+            Err(e) => {
+                let _ = ack.send(Err(BlockStoreError::RocksDb(e)));
+                continue;
+            }
+        };
+        if exists {
+            let _ = ack.send(Ok(false));
+            continue;
+        }
+        let compressed = match store.serialize_block(&block) {
+            Ok(b) => b,
+            Err(e) => {
+                let _ = ack.send(Err(e));
+                continue;
+            }
+        };
+        let header_bytes = match BlockStore::serialize_header(&block.header) {
+            Ok(b) => b,
+            Err(e) => {
+                let _ = ack.send(Err(e));
+                continue;
+            }
+        };
+        staged.push(StagedRow {
+            hash,
+            block,
+            compressed,
+            header_bytes,
+            canonical,
+            ack,
+        });
+    }
+
+    let mut wb = WriteBatch::default();
+    for row in &staged {
+        wb.put_cf(
+            cf_b,
+            hash_key(&row.hash).as_slice(),
+            row.compressed.as_slice(),
+        );
+        wb.put_cf(
+            cf_h,
+            hash_key(&row.hash).as_slice(),
+            row.header_bytes.as_slice(),
+        );
+        if row.canonical {
+            wb.put_cf(
+                cf_c,
+                height_key(row.block.height()),
+                hash_key(&row.hash).as_slice(),
+            );
+        }
+    }
+
+    if wb.is_empty() {
+        return Ok(());
+    }
+
+    if let Err(e) = store.db.write(wb) {
+        let msg = format!("write pipeline: rocksdb write failed: {e}");
+        for row in staged {
+            let _ = row
+                .ack
+                .send(Err(BlockStoreError::Serialization(msg.clone())));
+        }
+        return Ok(());
+    }
+
+    store.pipeline_write_batches.fetch_add(1, Ordering::Relaxed);
+
+    for row in staged {
+        let record = BlockRecord::from_header(&row.block.header, BlockStatus::Validated);
+        store.record_cache.lock().insert(row.hash, record);
+        store.block_cache.insert(row.hash, row.block.clone());
+        store
+            .header_cache
+            .insert(row.hash, row.block.header.clone());
+        let ack_res = match store.maybe_train_dictionary() {
+            Ok(()) => Ok(true),
+            Err(e) => Err(e),
+        };
+        let _ = row.ack.send(ack_res);
+    }
+    Ok(())
 }
 
 /// Lazy iterator over canonical block bodies for a closed height range ([`BLK-006`](../docs/requirements/domains/block_storage/specs/BLK-006.md)).
