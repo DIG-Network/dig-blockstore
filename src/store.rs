@@ -56,6 +56,7 @@
 //! - [`BLK-007`](../docs/requirements/domains/block_storage/specs/BLK-007.md) — async read wrappers (`get_block_async`, …).
 //! - [`BLK-008`](../docs/requirements/domains/block_storage/specs/BLK-008.md) — async write pipeline (`put_pipelined`, batched `WriteBatch`).
 //! - [`BLK-009`](../docs/requirements/domains/block_storage/specs/BLK-009.md) — `put_attestation` / `get_attestation` on [`CF_ATTESTED`].
+//! - [`BLK-010`](../docs/requirements/domains/block_storage/specs/BLK-010.md) — `update_status` on in-memory [`BlockRecord`] only.
 //! - [`SER-001`](../docs/requirements/domains/serialization/specs/SER-001.md) — bincode + zstd block serialization.
 //! - [`SER-002`](../docs/requirements/domains/serialization/specs/SER-002.md) — bincode-only header serialization.
 //! - [`SER-005`](../docs/requirements/domains/serialization/specs/SER-005.md) — dictionary training and persistence.
@@ -89,6 +90,7 @@ use crate::encoding::{decode_height_key, hash_key, height_key};
 use crate::error::{
     BlockStoreError, ERR_ASYNC_JOIN_PREFIX, ERR_INIT_GENESIS_ALREADY_INITIALIZED,
     ERR_INIT_GENESIS_READ_ONLY, ERR_MUTATION_READ_ONLY, ERR_OPEN_READONLY_PATH_MISSING_PREFIX,
+    ERR_UPDATE_STATUS_RECORD_NOT_CACHED_PREFIX,
 };
 use crate::types::{BlockRecord, ChainTip};
 use crate::BlockStoreConfig;
@@ -955,6 +957,31 @@ impl BlockStore {
     pub fn invalidate_record_cache_entry(&self, hash: &Bytes32) {
         let mut guard = self.record_cache.lock();
         let _ = guard.remove(hash);
+    }
+
+    /// **[`BLK-010`](../docs/requirements/domains/block_storage/specs/BLK-010.md)** — Set [`BlockRecord::status`] for a hash already present in [`Self::record_cache`].
+    ///
+    /// **No disk I/O:** [`BlockRecord`] is cache-only ([`TYP-004`](../docs/requirements/domains/storage_types/specs/TYP-004.md)); this method never touches [`rocksdb::WriteBatch`] or [`DB::put_cf`](rocksdb::DB::put_cf).
+    ///
+    /// **`in_canonical_chain`:** Recomputed from [`BlockStatus::is_canonical`](dig_block::BlockStatus::is_canonical) so the row stays aligned with [`BlockRecord::from_header`](crate::types::BlockRecord::from_header) ([`TYP-004`](../docs/requirements/domains/storage_types/specs/TYP-004.md) module docs).
+    ///
+    /// **Precondition:** The hash must already exist in the record cache (typically after [`Self::put_block`] or a cache-warming [`Self::get_record`]). Otherwise returns [`BlockStoreError::Serialization`] whose message starts with
+    /// [`ERR_UPDATE_STATUS_RECORD_NOT_CACHED_PREFIX`](crate::error::ERR_UPDATE_STATUS_RECORD_NOT_CACHED_PREFIX)
+    /// ([`ERR-001`](../docs/requirements/domains/error_types/specs/ERR-001_blockstoreerror_enum.md) caps the public enum at thirteen variants, so this uses the same stable-prefix pattern as read-only mutation guards).
+    pub fn update_status(
+        &self,
+        hash: &Bytes32,
+        status: BlockStatus,
+    ) -> Result<(), BlockStoreError> {
+        let mut guard = self.record_cache.lock();
+        let record = guard.get_mut(hash).ok_or_else(|| {
+            BlockStoreError::Serialization(format!(
+                "{ERR_UPDATE_STATUS_RECORD_NOT_CACHED_PREFIX}{hash}"
+            ))
+        })?;
+        record.status = status;
+        record.in_canonical_chain = status.is_canonical();
+        Ok(())
     }
 
     /// Count blocks persisted in [`CF_BLOCKS`] ([`SER-005`](../docs/requirements/domains/serialization/specs/SER-005.md) threshold).

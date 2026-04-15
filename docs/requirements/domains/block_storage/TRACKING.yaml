@@ -59,8 +59,9 @@ items:
 
   - id: BLK-010
     title: Status Updates (update_status)
-    status: gap
+    status: done
     spec_ref: "15.8"
+    notes: "BlockStore::update_status mutates record_cache only; refreshes in_canonical_chain; ERR_UPDATE_STATUS_RECORD_NOT_CACHED_PREFIX Serialization when miss; tests/blk_010_tests.rs"
 
   - id: BLK-011
     title: Has Block (has_block)

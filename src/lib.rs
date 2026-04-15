@@ -56,6 +56,7 @@ pub use encoding::{
 pub use error::{
     BlockStoreError, ERR_ASYNC_JOIN_PREFIX, ERR_INIT_GENESIS_ALREADY_INITIALIZED,
     ERR_INIT_GENESIS_READ_ONLY, ERR_MUTATION_READ_ONLY, ERR_OPEN_READONLY_PATH_MISSING_PREFIX,
+    ERR_UPDATE_STATUS_RECORD_NOT_CACHED_PREFIX,
 };
 pub use store::{BlockStore, StreamBlocksInRange};
 pub use types::{BlockRecord, ChainTip, StorageStats, StoredCheckpoint};

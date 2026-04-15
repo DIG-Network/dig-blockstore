@@ -28,7 +28,8 @@ use dig_blockstore::{
     decode_epoch_key, decode_height_key, epoch_key, hash_key, height_key, metadata_key,
     BlockRecord, BlockStore, BlockStoreConfig, BlockStoreError, ChainTip, StorageStats,
     StoredCheckpoint, CF_ATTESTED, CF_BLOCKS, CF_CANONICAL, CF_CHECKPOINTS, CF_HEADERS,
-    CF_METADATA, META_GENESIS_HASH, META_MIN_HEIGHT, META_SCHEMA_VERSION, META_TIP, META_ZSTD_DICT,
+    CF_METADATA, ERR_UPDATE_STATUS_RECORD_NOT_CACHED_PREFIX, META_GENESIS_HASH, META_MIN_HEIGHT,
+    META_SCHEMA_VERSION, META_TIP, META_ZSTD_DICT,
 };
 
 #[test]
@@ -47,6 +48,10 @@ fn test_all_reexports_importable_from_crate_root() {
     let _ = metadata_key(META_TIP);
     let h = Bytes32::default();
     assert_eq!(hash_key(&h).len(), 32);
+    assert!(
+        !ERR_UPDATE_STATUS_RECORD_NOT_CACHED_PREFIX.is_empty(),
+        "STR-003 stable-prefix re-export for BLK-010"
+    );
 }
 
 #[test]

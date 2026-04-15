@@ -58,7 +58,7 @@ After completing a requirement: write tests, verify they pass, update TRACKING.y
 - [x] BLK-007 — Async API (cache hit on executor, DB miss to spawn_blocking)
 - [x] BLK-008 — Write pipeline (async put_pipelined returning oneshot::Receiver)
 - [x] BLK-009 — put_attestation / get_attestation in CF_ATTESTED
-- [ ] BLK-010 — update_status (BlockStatus update on BlockRecord in cache)
+- [x] BLK-010 — update_status (BlockStatus update on BlockRecord in cache)
 - [ ] BLK-011 — has_block (lightweight existence check by hash)
 - [ ] BLK-012 — stats() (storage statistics via StorageStats)
 - [ ] BLK-013 — flush() and compact() (WAL flush and manual compaction)

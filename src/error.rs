@@ -44,6 +44,14 @@ pub const ERR_MUTATION_READ_ONLY: &str = "mutating API invoked on read-only bloc
 pub const ERR_INIT_GENESIS_ALREADY_INITIALIZED: &str =
     "init_genesis: block store already initialized";
 
+/// Stable [`BlockStoreError::Serialization`] payload prefix when [`crate::store::BlockStore::update_status`] runs but
+/// the in-memory record cache has no entry for the hash ([`BLK-010`](../docs/requirements/domains/block_storage/specs/BLK-010.md) AC §3).
+///
+/// **Why not a dedicated enum variant:** [`ERR-001`](../docs/requirements/domains/error_types/specs/ERR-001_blockstoreerror_enum.md) caps [`BlockStoreError`] at thirteen variants; this follows the same stable-string pattern as
+/// [`ERR_ASYNC_JOIN_PREFIX`] and read-only guards until the taxonomy grows.
+pub const ERR_UPDATE_STATUS_RECORD_NOT_CACHED_PREFIX: &str =
+    "update_status: no BlockRecord cached for block hash ";
+
 /// Stable [`BlockStoreError::Serialization`] payload prefix when a [`tokio::task::spawn_blocking`]
 /// task panics or is cancelled and [`tokio::task::JoinError`] surfaces on `.await`
 /// ([`BLK-007`](../docs/requirements/domains/block_storage/specs/BLK-007.md) AC §6).
