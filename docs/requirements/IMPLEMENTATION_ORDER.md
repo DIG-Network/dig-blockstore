@@ -45,7 +45,7 @@ After completing a requirement: write tests, verify they pass, update TRACKING.y
 - [x] SER-002 — Header serialization (bincode, uncompressed)
 - [x] SER-003 — Wire-format interop (chia-traits Streamable export/import)
 - [x] SER-004 — Round-trip guarantees (bincode, zstd, hash invariance)
-- [ ] SER-005 — Dictionary training and management (train on 1000 blocks, persist, fallback)
+  - [x] SER-005 — Dictionary training and management (train on 1000 blocks, persist, fallback)
 
 ## Phase 5: Block Storage
 

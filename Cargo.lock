@@ -781,6 +781,7 @@ dependencies = [
  "lru",
  "memmap2",
  "parking_lot",
+ "rand",
  "rocksdb",
  "serde",
  "tempfile",

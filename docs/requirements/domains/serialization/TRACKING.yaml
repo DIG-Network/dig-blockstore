@@ -29,5 +29,6 @@ items:
 
   - id: SER-005
     title: Dictionary Training and Management
-    status: gap
+    status: done
     spec_ref: "13.1"
+    notes: "DICT_* constants; BlockStore::{put,block_count,init_dictionary}; maybe_train_dictionary after init_genesis+put; zstd_dict RwLock; tests/ser_005_tests.rs; ERR_MUTATION_READ_ONLY"

@@ -53,6 +53,17 @@ pub const META_SCHEMA_VERSION: &str = "schema_version";
 /// Metadata key: trained zstd dictionary bytes ([`SER-005`](../docs/requirements/domains/serialization/specs/SER-005.md); [`TYP-002`](../docs/requirements/domains/storage_types/specs/TYP-002.md)).
 pub const META_ZSTD_DICT: &str = "zstd_dict";
 
+/// Minimum count of rows in [`CF_BLOCKS`] before [`crate::store::BlockStore`] may train a shared zstd dictionary ([`SER-005`](../docs/requirements/domains/serialization/specs/SER-005.md)).
+///
+/// **Rationale:** Spec names **1000** stored blocks as the trigger; training is O(n) over iterators and
+/// `zstd::dict::from_samples`, so it stays off the hot path until the corpus is large enough to learn stable patterns.
+pub const DICT_TRAINING_THRESHOLD: u64 = 1000;
+
+/// Target maximum dictionary size passed to [`zstd::dict::from_samples`] when training ([`SER-005`](../docs/requirements/domains/serialization/specs/SER-005.md); ~100 KB on disk).
+///
+/// **Note:** The codec may emit slightly smaller blobs; tests assert a **band** around this target (implementation notes: ~50–150 KB).
+pub const DICT_TARGET_SIZE: usize = 100 * 1024;
+
 /// On-disk schema version written under [`META_SCHEMA_VERSION`] ([`TYP-002`](../docs/requirements/domains/storage_types/specs/TYP-002.md) / NORMATIVE).
 ///
 /// **Rationale:** Bump when metadata or CF layout changes; opening older DBs without migration yields [`crate::error::BlockStoreError::SchemaMismatch`] (future wiring).

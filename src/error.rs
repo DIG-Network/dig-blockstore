@@ -36,6 +36,10 @@ pub const ERR_OPEN_READONLY_PATH_MISSING_PREFIX: &str =
 /// a read-only handle.
 pub const ERR_INIT_GENESIS_READ_ONLY: &str = "init_genesis: block store is read-only";
 
+/// Stable [`BlockStoreError::Serialization`] payload for other mutating APIs ([`crate::store::BlockStore::put`])
+/// on a read-only handle ([`BLK-001`](../docs/requirements/domains/block_storage/specs/BLK-001.md) precursor).
+pub const ERR_MUTATION_READ_ONLY: &str = "mutating API invoked on read-only block store";
+
 /// Stable [`BlockStoreError::Serialization`] payload when genesis metadata is already present.
 pub const ERR_INIT_GENESIS_ALREADY_INITIALIZED: &str =
     "init_genesis: block store already initialized";

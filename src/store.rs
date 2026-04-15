@@ -14,16 +14,18 @@ use std::sync::Arc;
 use chia_protocol::Bytes32;
 use dig_block::{L2Block, L2BlockHeader};
 use parking_lot::RwLock;
-use rocksdb::{Options, WriteBatch, DB};
+use rand::seq::SliceRandom;
+use rocksdb::{IteratorMode, Options, WriteBatch, DB};
 
 use crate::cf_options;
 use crate::constants::{
-    CF_BLOCKS, CF_CANONICAL, CF_HEADERS, CF_METADATA, META_GENESIS_HASH, META_TIP, META_ZSTD_DICT,
+    CF_BLOCKS, CF_CANONICAL, CF_HEADERS, CF_METADATA, DICT_TARGET_SIZE, DICT_TRAINING_THRESHOLD,
+    META_GENESIS_HASH, META_TIP, META_ZSTD_DICT,
 };
 use crate::encoding::{hash_key, height_key};
 use crate::error::{
     BlockStoreError, ERR_INIT_GENESIS_ALREADY_INITIALIZED, ERR_INIT_GENESIS_READ_ONLY,
-    ERR_OPEN_READONLY_PATH_MISSING_PREFIX,
+    ERR_MUTATION_READ_ONLY, ERR_OPEN_READONLY_PATH_MISSING_PREFIX,
 };
 use crate::types::ChainTip;
 use crate::BlockStoreConfig;
@@ -41,7 +43,12 @@ pub struct BlockStore {
     /// Cap passed to [`zstd::bulk::Decompressor::decompress`] ([`SER-001`](../docs/requirements/domains/serialization/specs/SER-001.md) implementation notes).
     max_decompressed_block_bytes: usize,
     /// Trained dictionary loaded from [`META_ZSTD_DICT`] or [`BlockStoreConfig::zstd_dictionary_override`].
-    zstd_dict: Option<Arc<Vec<u8>>>,
+    ///
+    /// **[`SER-005`](../docs/requirements/domains/serialization/specs/SER-005.md):** [`RwLock`] lets
+    /// [`Self::maybe_train_dictionary`] publish the first trained dictionary **after** the write that crosses
+    /// [`DICT_TRAINING_THRESHOLD`](crate::constants::DICT_TRAINING_THRESHOLD) while keeping [`BlockStore`] on an
+    /// immutable `&self` API surface (matches `put`-style ergonomics slated for [`BLK-001`](../docs/requirements/domains/block_storage/specs/BLK-001.md)).
+    zstd_dict: RwLock<Option<Arc<Vec<u8>>>>,
 }
 
 impl BlockStore {
@@ -81,7 +88,7 @@ impl BlockStore {
             compression_level,
             use_compression_dict,
             max_decompressed_block_bytes,
-            zstd_dict,
+            zstd_dict: RwLock::new(zstd_dict),
         })
     }
 
@@ -119,7 +126,7 @@ impl BlockStore {
             compression_level,
             use_compression_dict,
             max_decompressed_block_bytes,
-            zstd_dict,
+            zstd_dict: RwLock::new(zstd_dict),
         })
     }
 
@@ -166,6 +173,7 @@ impl BlockStore {
         batch.put_cf(meta, META_GENESIS_HASH.as_bytes(), hash.as_ref());
         self.db.write(batch)?;
         *self.tip.write() = Some(tip);
+        self.maybe_train_dictionary()?;
         Ok(())
     }
 
@@ -208,7 +216,8 @@ impl BlockStore {
     pub fn serialize_block(&self, block: &L2Block) -> Result<Vec<u8>, BlockStoreError> {
         let raw = bincode::serialize(block)?;
         if self.use_compression_dict {
-            if let Some(dict) = &self.zstd_dict {
+            let dict_guard = self.zstd_dict.read();
+            if let Some(dict) = dict_guard.as_ref() {
                 let mut compressor = zstd::bulk::Compressor::with_dictionary(
                     self.compression_level,
                     dict.as_slice(),
@@ -242,7 +251,7 @@ impl BlockStore {
 
     fn decompress_block_payload(&self, compressed: &[u8]) -> std::io::Result<Vec<u8>> {
         if self.use_compression_dict {
-            if let Some(dict) = &self.zstd_dict {
+            if let Some(dict) = self.zstd_dict.read().as_ref() {
                 let mut decompressor = zstd::bulk::Decompressor::with_dictionary(dict.as_slice())?;
                 return match decompressor.decompress(compressed, self.max_decompressed_block_bytes)
                 {
@@ -261,6 +270,150 @@ impl BlockStore {
             return Ok(None);
         };
         Ok(Some(self.deserialize_block(&raw)?))
+    }
+
+    /// **[`BLK-001`](../docs/requirements/domains/block_storage/specs/BLK-001.md)** — Store a full block:
+    /// zstd payload → [`CF_BLOCKS`], bincode header → [`CF_HEADERS`], optional height index → [`CF_CANONICAL`].
+    ///
+    /// **Idempotency:** If the block hash already exists in `CF_BLOCKS`, returns `Ok(false)` and performs no writes
+    /// ([`start.md`](../docs/prompt/start.md) hard requirement §9).
+    ///
+    /// **[`SER-005`](../../docs/requirements/domains/serialization/specs/SER-005.md):** A successful insert that makes
+    /// [`Self::block_count`] reach [`DICT_TRAINING_THRESHOLD`] triggers **one-time** dictionary training (when
+    /// [`BlockStoreConfig::use_compression_dict`](crate::BlockStoreConfig) is `true`). The in-Rust name `put` matches
+    /// the BLK-001 spec snippet; future docs may alias `put_block`.
+    ///
+    /// **Cache:** [`BlockRecord`] in-memory cache ([`BLK-001`]) is not wired yet; callers rely on [`Self::get_block`]
+    /// deserialization until [`CAC-003`](../docs/requirements/domains/caching/specs/CAC-003.md).
+    pub fn put(&self, block: &L2Block, canonical: bool) -> Result<bool, BlockStoreError> {
+        if self.read_only {
+            return Err(BlockStoreError::Serialization(
+                ERR_MUTATION_READ_ONLY.into(),
+            ));
+        }
+        let hash = block.hash();
+        let cf_b = self.cf(CF_BLOCKS)?;
+        if self.db.get_cf(cf_b, hash_key(&hash).as_slice())?.is_some() {
+            return Ok(false);
+        }
+        let compressed = self.serialize_block(block)?;
+        let header_bytes = Self::serialize_header(&block.header)?;
+        let mut batch = WriteBatch::default();
+        let cf_h = self.cf(CF_HEADERS)?;
+        batch.put_cf(cf_b, hash_key(&hash).as_slice(), &compressed);
+        batch.put_cf(cf_h, hash_key(&hash).as_slice(), &header_bytes);
+        if canonical {
+            let cf_c = self.cf(CF_CANONICAL)?;
+            batch.put_cf(cf_c, height_key(block.height()), hash_key(&hash).as_slice());
+        }
+        self.db.write(batch)?;
+        self.maybe_train_dictionary()?;
+        Ok(true)
+    }
+
+    /// Count blocks persisted in [`CF_BLOCKS`] ([`SER-005`](../docs/requirements/domains/serialization/specs/SER-005.md) threshold).
+    ///
+    /// **Operational note:** Implemented as a full-column scan — acceptable for the **rare** dictionary-training edge;
+    /// production tipping paths should eventually cache this in [`CF_METADATA`](crate::CF_METADATA) if needed.
+    pub fn block_count(&self) -> Result<u64, BlockStoreError> {
+        let cf = self.cf(CF_BLOCKS)?;
+        let iter = self.db.iterator_cf(cf, IteratorMode::Start);
+        let mut n = 0u64;
+        for item in iter {
+            let (_k, _v) = item?;
+            n = n.saturating_add(1);
+        }
+        Ok(n)
+    }
+
+    /// **[`SER-005`](../docs/requirements/domains/serialization/specs/SER-005.md)** — Reload dictionary bytes from
+    /// [`META_ZSTD_DICT`] into memory after external maintenance (or to align with [`Self::train_dictionary`]
+    /// persistence).
+    ///
+    /// **Startup:** [`Self::open`] already embeds this via [`load_zstd_dict_from_db`]; public callers use
+    /// `init_dictionary` when a **second process** trains the dictionary or metadata is repaired online.
+    pub fn init_dictionary(&self) -> Result<(), BlockStoreError> {
+        let loaded = load_zstd_dict_from_db(&self.db, self.use_compression_dict)?;
+        *self.zstd_dict.write() = loaded;
+        Ok(())
+    }
+
+    /// Collect `sample_count` **uncompressed** bincode block bodies for [`zstd::dict::from_samples`].
+    ///
+    /// **Randomness:** Keys/values are shuffled with [`rand::thread_rng`] so training sees a representative slice of
+    /// the corpus, not a height-ordered prefix ([`SER-005`](../docs/requirements/domains/serialization/specs/SER-005.md) implementation notes).
+    fn sample_block_bodies(&self, sample_count: usize) -> Result<Vec<Vec<u8>>, BlockStoreError> {
+        let cf = self.cf(CF_BLOCKS)?;
+        let mut blobs: Vec<Vec<u8>> = Vec::new();
+        let iter = self.db.iterator_cf(cf, IteratorMode::Start);
+        for item in iter {
+            let (_key, value) = item?;
+            blobs.push(value.to_vec());
+        }
+        if blobs.len() < sample_count {
+            return Err(BlockStoreError::Serialization(format!(
+                "dictionary training: need at least {sample_count} blocks in {CF_BLOCKS}, have {}",
+                blobs.len()
+            )));
+        }
+        blobs.shuffle(&mut rand::thread_rng());
+        blobs.truncate(sample_count);
+        let mut samples = Vec::with_capacity(sample_count);
+        for compressed in blobs {
+            let raw = self.decompress_block_payload(&compressed).map_err(|e| {
+                BlockStoreError::Serialization(format!(
+                    "dictionary training sample decompress: {e}"
+                ))
+            })?;
+            samples.push(raw);
+        }
+        Ok(samples)
+    }
+
+    /// Train + persist a zstd dictionary; **idempotent** if [`META_ZSTD_DICT`] already contains bytes.
+    fn train_dictionary(&self) -> Result<Vec<u8>, BlockStoreError> {
+        let meta = self.cf(CF_METADATA)?;
+        if let Some(blob) = self.db.get_cf(meta, META_ZSTD_DICT.as_bytes())? {
+            if !blob.is_empty() {
+                return Ok(blob);
+            }
+        }
+        let n = DICT_TRAINING_THRESHOLD as usize;
+        let samples = self.sample_block_bodies(n)?;
+        let refs: Vec<&[u8]> = samples.iter().map(Vec::as_slice).collect();
+        let dict = zstd::dict::from_samples(&refs, DICT_TARGET_SIZE).map_err(|e| {
+            BlockStoreError::Serialization(format!("dictionary training failed: {e}"))
+        })?;
+        self.db
+            .put_cf(meta, META_ZSTD_DICT.as_bytes(), dict.as_slice())?;
+        Ok(dict)
+    }
+
+    /// If dictionary training is enabled, the live dictionary slot is empty, and [`Self::block_count`] is at or above
+    /// [`DICT_TRAINING_THRESHOLD`], train once and install into memory.
+    fn maybe_train_dictionary(&self) -> Result<(), BlockStoreError> {
+        if !self.use_compression_dict {
+            return Ok(());
+        }
+        if self.zstd_dict.read().is_some() {
+            return Ok(());
+        }
+        let meta = self.cf(CF_METADATA)?;
+        if self
+            .db
+            .get_cf(meta, META_ZSTD_DICT.as_bytes())?
+            .filter(|b| !b.is_empty())
+            .is_some()
+        {
+            self.init_dictionary()?;
+            return Ok(());
+        }
+        if self.block_count()? < DICT_TRAINING_THRESHOLD {
+            return Ok(());
+        }
+        let dict = self.train_dictionary()?;
+        *self.zstd_dict.write() = Some(Arc::new(dict));
+        Ok(())
     }
 
     fn cf(&self, name: &'static str) -> Result<&rocksdb::ColumnFamily, BlockStoreError> {

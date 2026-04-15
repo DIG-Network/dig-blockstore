@@ -47,6 +47,8 @@ bincode = "1"
 serde = { version = "1", features = ["derive"] }
 
 # --- Errors, concurrency, async, caching, mmap ---
+# [`SER-005`](docs/requirements/domains/serialization/specs/SER-005.md): random sampling of CF_BLOCKS rows for dictionary training (`sample_block_bodies`).
+rand = "0.8"
 thiserror = "1"
 parking_lot = "0.12"
 lru = "0.12"
@@ -124,6 +126,10 @@ path = "tests/ser_003_tests.rs"
 [[test]]
 name = "ser_004_tests"
 path = "tests/ser_004_tests.rs"
+
+[[test]]
+name = "ser_005_tests"
+path = "tests/ser_005_tests.rs"
 
 [[test]]
 name = "typ_001_tests"
