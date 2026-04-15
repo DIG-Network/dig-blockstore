@@ -8,8 +8,9 @@ items:
     status: implemented
     spec_ref: "docs/requirements/domains/rollback_reorg/specs/ROR-001.md"
     tests:
+      - tests/ror_001_tests.rs
       - tests/ror_005_tests.rs
-    notes: "rollback_to_height: validation → collect → WriteBatch delete CF_CANONICAL → truncate mmap → set_tip → update caches; 6 tests (shared with ROR-005)"
+    notes: "rollback_to_height: validation → collect → WriteBatch delete CF_CANONICAL → truncate mmap → set_tip → update caches; 6+6 tests"
 
   - id: ROR-002
     section: "Rollback & Reorg"

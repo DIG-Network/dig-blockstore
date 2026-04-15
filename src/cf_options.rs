@@ -52,8 +52,13 @@ pub const CHECKPOINTS_TARGET_FILE_SIZE_BASE: u64 = 256 * 1024 * 1024;
 /// may still inject a `[default]` CF internally—see its `open_cf_descriptors_internal` implementation.
 /// Build CF descriptors, optionally with compaction filter for pruning ([`PRN-003`]).
 ///
-/// When `prune_threshold` is `Some`, a compaction filter is registered on CF_HEADERS
-/// that drops entries where the deserialized header height is below the threshold.
+/// When `prune_threshold` is `Some`, compaction filters are registered on:
+/// - **CF_HEADERS**: Deserializes header bincode to extract height; drops below threshold.
+/// - **CF_ATTESTED**: Deserializes `AttestedBlock` bincode to extract height; drops below threshold.
+/// - **CF_BLOCKS**: Values are zstd-compressed (possibly dictionary-compressed), making height
+///   extraction impractical in a compaction filter context. PRN-001 explicit pruning handles
+///   CF_BLOCKS cleanup. A best-effort filter is registered that attempts plain zstd decode.
+///
 /// The threshold is read from the shared `AtomicU64` with `Acquire` ordering.
 pub fn column_family_descriptors(
     config: &BlockStoreConfig,
@@ -63,9 +68,9 @@ pub fn column_family_descriptors(
         .iter()
         .map(|&name| {
             let opts = match name {
-                CF_BLOCKS => blocks_cf_options(config),
+                CF_BLOCKS => blocks_cf_options(config, prune_threshold.clone()),
                 CF_HEADERS => headers_cf_options(prune_threshold.clone()),
-                CF_ATTESTED => attested_cf_options(),
+                CF_ATTESTED => attested_cf_options(prune_threshold.clone()),
                 CF_CANONICAL => canonical_cf_options(),
                 CF_CHECKPOINTS => checkpoints_cf_options(),
                 CF_METADATA => metadata_cf_options(),
@@ -76,14 +81,45 @@ pub fn column_family_descriptors(
         .collect()
 }
 
-/// [`CF_BLOCKS`]: Universal compaction; optional BlobDB; **no** explicit bloom ([`TYP-003`](../docs/requirements/domains/storage_types/specs/TYP-003.md)).
-pub fn blocks_cf_options(config: &BlockStoreConfig) -> Options {
+/// [`CF_BLOCKS`]: Universal compaction; optional BlobDB; **no** explicit bloom; optional compaction filter ([`PRN-003`]).
+///
+/// **Compaction filter note:** CF_BLOCKS values are zstd-compressed (possibly with a trained
+/// dictionary). The filter attempts plain `zstd::decode_all` + bincode deserialize to extract
+/// block height. Dictionary-compressed payloads will fail decode and be kept (safe fallback).
+/// PRN-001 explicit pruning is the primary cleanup mechanism for CF_BLOCKS.
+pub fn blocks_cf_options(
+    config: &BlockStoreConfig,
+    prune_threshold: Option<Arc<AtomicU64>>,
+) -> Options {
     let mut opts = Options::default();
     opts.set_compaction_style(DBCompactionStyle::Universal);
     if config.enable_blob_db {
         opts.set_enable_blob_files(true);
         opts.set_min_blob_size(BLOCKS_BLOB_MIN_SIZE);
         opts.set_blob_compression_type(DBCompressionType::Zstd);
+    }
+    if let Some(threshold) = prune_threshold {
+        opts.set_compaction_filter("prn003_block_height_filter", move |_level, _key, value| {
+            let min_height = threshold.load(Ordering::Acquire);
+            if min_height == 0 {
+                return Decision::Keep;
+            }
+            // Best-effort: try plain zstd decode (dictionary-compressed payloads fail safely).
+            let raw = match zstd::decode_all(value) {
+                Ok(r) => r,
+                Err(_) => return Decision::Keep, // can't decode → keep
+            };
+            match bincode::deserialize::<dig_block::L2Block>(&raw) {
+                Ok(block) => {
+                    if block.height() < min_height {
+                        Decision::Remove
+                    } else {
+                        Decision::Keep
+                    }
+                }
+                Err(_) => Decision::Keep,
+            }
+        });
     }
     opts
 }
@@ -125,13 +161,37 @@ pub fn headers_cf_options(prune_threshold: Option<Arc<AtomicU64>>) -> Options {
     opts
 }
 
-/// [`CF_ATTESTED`]: Level compaction + bloom; default compression (left at RocksDB default).
-pub fn attested_cf_options() -> Options {
+/// [`CF_ATTESTED`]: Level compaction + bloom; default compression; optional compaction filter ([`PRN-003`]).
+///
+/// **Compaction filter:** Deserializes `AttestedBlock` bincode to extract block height.
+/// Drops entries where height < min_retained_height.
+pub fn attested_cf_options(prune_threshold: Option<Arc<AtomicU64>>) -> Options {
     let mut block = BlockBasedOptions::default();
     block.set_bloom_filter(f64::from(DEFAULT_BLOOM_BITS_PER_KEY), false);
     let mut opts = Options::default();
     opts.set_compaction_style(DBCompactionStyle::Level);
     opts.set_block_based_table_factory(&block);
+    if let Some(threshold) = prune_threshold {
+        opts.set_compaction_filter(
+            "prn003_attested_height_filter",
+            move |_level, _key, value| {
+                let min_height = threshold.load(Ordering::Acquire);
+                if min_height == 0 {
+                    return Decision::Keep;
+                }
+                match bincode::deserialize::<dig_block::AttestedBlock>(value) {
+                    Ok(ab) => {
+                        if ab.block.height() < min_height {
+                            Decision::Remove
+                        } else {
+                            Decision::Keep
+                        }
+                    }
+                    Err(_) => Decision::Keep,
+                }
+            },
+        );
+    }
     opts
 }
 
