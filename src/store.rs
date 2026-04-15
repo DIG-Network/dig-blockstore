@@ -64,6 +64,7 @@
 //! - [`BLK-015`](../docs/requirements/domains/block_storage/specs/BLK-015.md) — `get_records_in_range` / `get_record_by_height` (header-derived, no block bodies).
 //! - [`CAN-001`](../docs/requirements/domains/canonical_chain/specs/CAN-001.md) — dual-layer canonical index (`canonical.bin` + [`CF_CANONICAL`]).
 //! - [`CAN-003`](../docs/requirements/domains/canonical_chain/specs/CAN-003.md) — [`set_canonical`](BlockStore::set_canonical) for existing stored blocks.
+//! - [`CAN-004`](../docs/requirements/domains/canonical_chain/specs/CAN-004.md) — [`set_canonical_batch`](BlockStore::set_canonical_batch) (single [`WriteBatch`](rocksdb::WriteBatch) for reorg-scale promotion).
 //! - [`SER-001`](../docs/requirements/domains/serialization/specs/SER-001.md) — bincode + zstd block serialization.
 //! - [`SER-002`](../docs/requirements/domains/serialization/specs/SER-002.md) — bincode-only header serialization.
 //! - [`SER-005`](../docs/requirements/domains/serialization/specs/SER-005.md) — dictionary training and persistence.
@@ -1100,6 +1101,59 @@ impl BlockStore {
             let mut r = record;
             r.in_canonical_chain = true;
             self.record_cache.lock().insert(*hash, r);
+        }
+        Ok(())
+    }
+
+    /// **[`CAN-004`](../docs/requirements/domains/canonical_chain/specs/CAN-004.md)** — Promote **many** already-stored blocks to the canonical height→hash index in one **atomic** RocksDB commit.
+    ///
+    /// **Why a separate API from [`Self::set_canonical`]:** Reorgs ([`ROR-003`](../docs/requirements/domains/rollback_reorg/specs/ROR-003.md)) must flip many heights at once; a single [`WriteBatch`](rocksdb::WriteBatch) gives all-or-nothing durability in [`CF_CANONICAL`](crate::constants::CF_CANONICAL) ([`NORMATIVE` § CAN-004](../docs/requirements/domains/canonical_chain/NORMATIVE.md#can-004-set_canonical_batch)).
+    ///
+    /// **Algorithm (matches CAN-004 spec — validate, durable batch, then best-effort hot path):**
+    /// 1. **Fail-fast validation:** For each input hash (in order), [`Self::get_record`]. First miss → [`BlockStoreError::BlockNotInStore`] **before** any `WriteBatch` mutation so callers never observe partial CF updates from this method.
+    /// 2. **Atomic CF write:** One [`WriteBatch`] with all `height_key(record.height) → hash_key(hash)` rows, then [`DB::write`](rocksdb::DB::write).
+    /// 3. **Post-commit:** Same as [`Self::set_canonical`] — [`Self::canonical_bin`]’s mmap writer ([`CanonicalDenseFile::write_hash`](crate::canonical::mmap::CanonicalDenseFile::write_hash) via `extend_write` in `src/canonical/mmap.rs`) per pair, then set [`BlockRecord::in_canonical_chain`](crate::types::BlockRecord::in_canonical_chain) in [`Self::record_cache`] (re-insert on eviction, same as CAN-003).
+    ///
+    /// **Empty slice:** [`Ok(())] immediately — no I/O ([`CAN-004`](../docs/requirements/domains/canonical_chain/specs/CAN-004.md) acceptance).
+    ///
+    /// **Crash window:** If the process dies after `db.write` but before mmap/cache finish, [`CAN-001`](../docs/requirements/domains/canonical_chain/specs/CAN-001.md) reopen rebuilds `canonical.bin` from [`CF_CANONICAL`].
+    ///
+    /// **Read-only:** Same [`BlockStoreError::Serialization`] + [`ERR_MUTATION_READ_ONLY`](crate::error::ERR_MUTATION_READ_ONLY) contract as [`Self::put_block`] / [`Self::set_canonical`].
+    pub fn set_canonical_batch(&self, hashes: &[Bytes32]) -> Result<(), BlockStoreError> {
+        if self.read_only {
+            return Err(BlockStoreError::Serialization(
+                ERR_MUTATION_READ_ONLY.into(),
+            ));
+        }
+        if hashes.is_empty() {
+            return Ok(());
+        }
+        let mut validated: Vec<(Bytes32, BlockRecord)> = Vec::with_capacity(hashes.len());
+        for hash in hashes {
+            let Some(record) = self.get_record(hash)? else {
+                return Err(BlockStoreError::BlockNotInStore(*hash));
+            };
+            validated.push((*hash, record));
+        }
+        let cf = self.cf(CF_CANONICAL)?;
+        let mut batch = WriteBatch::default();
+        for (hash, record) in &validated {
+            batch.put_cf(
+                &cf,
+                height_key(record.height).as_slice(),
+                hash_key(hash).as_slice(),
+            );
+        }
+        self.db.write(batch)?;
+        for (hash, record) in &validated {
+            self.canonical_bin.write().extend_write(record.height, hash)?;
+            if let Some(r) = self.record_cache.lock().get_mut(hash) {
+                r.in_canonical_chain = true;
+            } else {
+                let mut r = record.clone();
+                r.in_canonical_chain = true;
+                self.record_cache.lock().insert(*hash, r);
+            }
         }
         Ok(())
     }

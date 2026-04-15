@@ -32,10 +32,11 @@ items:
   - id: CAN-004
     section: "Canonical Chain"
     summary: "set_canonical_batch"
-    status: gap
+    status: implemented
     spec_ref: "docs/requirements/domains/canonical_chain/specs/CAN-004.md"
-    tests: []
-    notes: ""
+    tests:
+      - tests/can_004_tests.rs
+    notes: "BlockStore::set_canonical_batch; validate-then-single-WriteBatch; mmap + record_cache after commit"
 
   - id: CAN-005
     section: "Canonical Chain"

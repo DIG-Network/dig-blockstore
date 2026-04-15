@@ -206,6 +206,10 @@ name = "can_003_tests"
 path = "tests/can_003_tests.rs"
 
 [[test]]
+name = "can_004_tests"
+path = "tests/can_004_tests.rs"
+
+[[test]]
 name = "typ_001_tests"
 path = "tests/typ_001_tests.rs"
 
