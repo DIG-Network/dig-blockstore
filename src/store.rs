@@ -102,7 +102,7 @@ use crate::error::{
     ERR_INIT_GENESIS_READ_ONLY, ERR_MUTATION_READ_ONLY, ERR_OPEN_READONLY_PATH_MISSING_PREFIX,
     ERR_UPDATE_STATUS_RECORD_NOT_CACHED_PREFIX,
 };
-use crate::types::{BlockRecord, ChainTip, StorageStats};
+use crate::types::{BlockRecord, ChainTip, ReorgResult, StorageStats};
 use crate::BlockStoreConfig;
 
 /// One ingress job for [`run_write_pipeline`]: own the [`L2Block`], canonical flag, and per-block ack channel
@@ -1589,6 +1589,130 @@ impl BlockStore {
         }
 
         Ok(reverted)
+    }
+
+    /// Atomically rollback the canonical chain to `ancestor_height` and re-canonicalize
+    /// the blocks in `new_chain_hashes`.
+    ///
+    /// # Algorithm ([`ROR-003`](../docs/requirements/domains/rollback_reorg/specs/ROR-003.md))
+    ///
+    /// 1. **Validate:** NoTip → error. EmptyReorgChain → error. Each hash in `new_chain_hashes`
+    ///    must be in the store (BlockNotInStore if not).
+    /// 2. **WriteBatch (atomic):**
+    ///    - Delete CF_CANONICAL entries for heights `ancestor_height + 1` .. `current_tip.height`.
+    ///    - Put new canonical entries for each hash in `new_chain_hashes` (height from record).
+    ///    - Write new tip (last hash in `new_chain_hashes`) to META_TIP.
+    /// 3. **Post-commit:**
+    ///    - Truncate `canonical.bin` to `ancestor_height`, then write new hashes.
+    ///    - Update record_cache: reverted → `in_canonical_chain=false`, applied → `true`.
+    ///    - Update in-memory tip.
+    ///    - Evict/update canonical_height_cache.
+    ///
+    /// # Returns
+    ///
+    /// [`ReorgResult`] with `reverted` (descending), `applied` (ascending), and `new_tip`.
+    pub fn apply_reorg(
+        &self,
+        ancestor_height: u64,
+        new_chain_hashes: &[Bytes32],
+    ) -> Result<ReorgResult, BlockStoreError> {
+        if self.read_only {
+            return Err(BlockStoreError::Serialization(
+                ERR_MUTATION_READ_ONLY.into(),
+            ));
+        }
+        let current_tip = self.tip().ok_or(BlockStoreError::NoTip)?;
+        if new_chain_hashes.is_empty() {
+            return Err(BlockStoreError::EmptyReorgChain);
+        }
+
+        // Validate all new chain hashes exist and collect their records
+        let mut new_records: Vec<(Bytes32, BlockRecord)> =
+            Vec::with_capacity(new_chain_hashes.len());
+        for hash in new_chain_hashes {
+            let record = self
+                .get_record(hash)?
+                .ok_or(BlockStoreError::BlockNotInStore(*hash))?;
+            new_records.push((*hash, record));
+        }
+
+        let cf_c = self.cf(CF_CANONICAL)?;
+        let cf_meta = self.cf(CF_METADATA)?;
+        let mut batch = WriteBatch::default();
+
+        // Phase 1: Rollback — delete old canonical entries above ancestor_height
+        let mut reverted = Vec::new();
+        for h in (ancestor_height + 1..=current_tip.height).rev() {
+            if let Some(hash) = self.get_hash_by_height(h)? {
+                reverted.push(hash);
+            }
+            batch.delete_cf(cf_c, height_key(h));
+        }
+
+        // Phase 2: Apply new chain
+        for (hash, record) in &new_records {
+            batch.put_cf(cf_c, height_key(record.height), hash_key(hash).as_slice());
+        }
+
+        // Phase 3: Write new tip in the same batch
+        let new_tip_hash = new_chain_hashes
+            .last()
+            .copied()
+            .expect("non-empty checked above");
+        let new_tip_height = new_records.last().expect("non-empty").1.height;
+        let new_tip = ChainTip {
+            hash: new_tip_hash,
+            height: new_tip_height,
+        };
+        batch.put_cf(cf_meta, META_TIP.as_bytes(), new_tip.to_bytes().as_slice());
+
+        // Atomic commit
+        self.db.write(batch)?;
+
+        // Post-commit: update mmap
+        self.canonical_bin
+            .write()
+            .truncate_to_height(ancestor_height)?;
+        for (hash, record) in &new_records {
+            self.canonical_bin
+                .write()
+                .extend_write(record.height, hash)?;
+        }
+
+        // Post-commit: update record cache
+        {
+            let mut cache = self.record_cache.lock();
+            for hash in &reverted {
+                if let Some(r) = cache.get_mut(hash) {
+                    r.in_canonical_chain = false;
+                }
+            }
+            for (hash, _) in &new_records {
+                if let Some(r) = cache.get_mut(hash) {
+                    r.in_canonical_chain = true;
+                }
+            }
+        }
+
+        // Post-commit: update canonical_height_cache
+        {
+            let mut hcache = self.canonical_height_cache.write();
+            for h in ancestor_height + 1..=current_tip.height {
+                hcache.remove(&h);
+            }
+            for (hash, record) in &new_records {
+                hcache.insert(record.height, *hash);
+            }
+        }
+
+        // Post-commit: update in-memory tip
+        *self.tip.write() = Some(new_tip);
+
+        Ok(ReorgResult {
+            reverted,
+            applied: new_chain_hashes.to_vec(),
+            new_tip,
+        })
     }
 
     /// Walk the `parent_hash` chain from `hash` backward, returning the first block

@@ -5,10 +5,12 @@
 
 pub mod block_record;
 pub mod chain_tip;
+pub mod reorg_result;
 pub mod storage_stats;
 pub mod stored_checkpoint;
 
 pub use block_record::BlockRecord;
 pub use chain_tip::ChainTip;
+pub use reorg_result::ReorgResult;
 pub use storage_stats::StorageStats;
 pub use stored_checkpoint::StoredCheckpoint;

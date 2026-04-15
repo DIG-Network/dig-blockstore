@@ -23,18 +23,20 @@ items:
   - id: ROR-003
     section: "Rollback & Reorg"
     summary: "Apply Reorg (Atomic)"
-    status: gap
+    status: implemented
     spec_ref: "docs/requirements/domains/rollback_reorg/specs/ROR-003.md"
-    tests: []
-    notes: ""
+    tests:
+      - tests/ror_003_tests.rs
+    notes: "Single WriteBatch: delete + put + tip; ReorgResult type; mmap + cache post-commit; 6 tests"
 
   - id: ROR-004
     section: "Rollback & Reorg"
     summary: "Fork Preservation"
-    status: gap
+    status: implemented
     spec_ref: "docs/requirements/domains/rollback_reorg/specs/ROR-004.md"
-    tests: []
-    notes: ""
+    tests:
+      - tests/ror_004_tests.rs
+    notes: "CF_BLOCKS/CF_HEADERS untouched by rollback/reorg; only CF_CANONICAL changes; 5 tests"
 
   - id: ROR-005
     section: "Rollback & Reorg"

@@ -61,7 +61,7 @@ pub use error::{
     ERR_UPDATE_STATUS_RECORD_NOT_CACHED_PREFIX,
 };
 pub use store::{BlockStore, StreamBlocksInRange};
-pub use types::{BlockRecord, ChainTip, StorageStats, StoredCheckpoint};
+pub use types::{BlockRecord, ChainTip, ReorgResult, StorageStats, StoredCheckpoint};
 pub use wire::{block_from_wire_bytes, block_to_wire_bytes};
 
 use dig_block::L2BlockHeader;
