@@ -62,7 +62,7 @@ After completing a requirement: write tests, verify they pass, update TRACKING.y
 - [x] BLK-011 — has_block (lightweight existence check by hash)
 - [x] BLK-012 — stats() (storage statistics via StorageStats)
 - [x] BLK-013 — flush() and compact() (WAL flush and manual compaction)
-- [ ] BLK-014 — get_blocks_in_range (canonical blocks in [start, end] inclusive)
+- [x] BLK-014 — get_blocks_in_range (canonical blocks in [start, end] inclusive)
 - [ ] BLK-015 — get_records_in_range (canonical records in [start, end] inclusive)
 
 ## Phase 6: Canonical Chain

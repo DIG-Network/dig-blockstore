@@ -83,8 +83,9 @@ items:
 
   - id: BLK-014
     title: Get Blocks in Range (get_blocks_in_range)
-    status: gap
+    status: done
     spec_ref: "5.3, 15.3"
+    notes: "BlockStore::get_block_by_height (sync CF_CANONICAL + get_block); get_blocks_in_range inclusive/skip gaps; get_block_by_height_async delegates to sync; tests/blk_014_tests.rs"
 
   - id: BLK-015
     title: Get Records in Range (get_records_in_range)

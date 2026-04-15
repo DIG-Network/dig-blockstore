@@ -186,6 +186,10 @@ name = "blk_013_tests"
 path = "tests/blk_013_tests.rs"
 
 [[test]]
+name = "blk_014_tests"
+path = "tests/blk_014_tests.rs"
+
+[[test]]
 name = "typ_001_tests"
 path = "tests/typ_001_tests.rs"
 

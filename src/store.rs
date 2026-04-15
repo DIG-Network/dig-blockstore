@@ -60,6 +60,7 @@
 //! - [`BLK-011`](../docs/requirements/domains/block_storage/specs/BLK-011.md) — `has_block` lightweight existence by hash.
 //! - [`BLK-012`](../docs/requirements/domains/block_storage/specs/BLK-012.md) — `stats` aggregate [`StorageStats`](crate::types::StorageStats) snapshot.
 //! - [`BLK-013`](../docs/requirements/domains/block_storage/specs/BLK-013.md) — `flush` / `compact` maintenance on the shared [`rocksdb::DB`].
+//! - [`BLK-014`](../docs/requirements/domains/block_storage/specs/BLK-014.md) — `get_blocks_in_range` and sync `get_block_by_height` over [`CF_CANONICAL`].
 //! - [`SER-001`](../docs/requirements/domains/serialization/specs/SER-001.md) — bincode + zstd block serialization.
 //! - [`SER-002`](../docs/requirements/domains/serialization/specs/SER-002.md) — bincode-only header serialization.
 //! - [`SER-005`](../docs/requirements/domains/serialization/specs/SER-005.md) — dictionary training and persistence.
@@ -736,6 +737,56 @@ impl BlockStore {
         self.block_cache.remove(hash);
     }
 
+    /// Look up the canonical block at `height` ([`CAN-006`](../docs/requirements/domains/canonical_chain/specs/CAN-006.md) precursor, [`BLK-014`](../docs/requirements/domains/block_storage/specs/BLK-014.md) building block).
+    ///
+    /// **Algorithm:** [`height_key`](crate::encoding::height_key)(`height`) → [`DB::get_cf`](rocksdb::DB::get_cf) on [`CF_CANONICAL`] →
+    /// decode 32-byte [`Bytes32`] → delegate to [`Self::get_block`] ([`BLK-002`](../docs/requirements/domains/block_storage/specs/BLK-002.md) decompress + cache).
+    ///
+    /// **Returns:** `Ok(None)` when the height index is absent **or** when the hash is indexed but the body row is
+    /// missing (same as [`Self::get_block`] returning `None`).
+    ///
+    /// **Threading:** Safe on any thread; performs synchronous RocksDB + zstd work — use [`Self::get_block_by_height_async`]
+    /// from async contexts that must not block the runtime ([`BLK-007`](../docs/requirements/domains/block_storage/specs/BLK-007.md)).
+    pub fn get_block_by_height(&self, height: u64) -> Result<Option<L2Block>, BlockStoreError> {
+        let cf = self.cf(CF_CANONICAL)?;
+        let hk = height_key(height);
+        let Some(hash_bytes) = self.db.get_cf(cf, hk.as_slice())? else {
+            return Ok(None);
+        };
+        let arr: [u8; 32] = hash_bytes.as_slice().try_into().map_err(|_| {
+            BlockStoreError::Serialization(
+                "get_block_by_height: CF_CANONICAL value must be exactly 32 bytes".into(),
+            )
+        })?;
+        let hash = Bytes32::new(arr);
+        self.get_block(&hash)
+    }
+
+    /// **[`BLK-014`](../docs/requirements/domains/block_storage/specs/BLK-014.md)** — Collect canonical [`L2Block`]s for
+    /// heights in `[start_height, end_height]` inclusive ([`NORMATIVE` BLK-014](../docs/requirements/domains/block_storage/NORMATIVE.md#blk-014-get-blocks-in-range-get_blocks_in_range)).
+    ///
+    /// **Semantics:** Ascending height order; `start_height > end_height` ⇒ empty `Vec` (not an error); any height with
+    /// no canonical row or no retrievable body is **omitted** (gaps and “beyond tip” behave the same — fewer results).
+    ///
+    /// **vs [`Self::stream_blocks_in_range`] ([`BLK-006`]):** This API eagerly builds a `Vec` with simple point lookups per height.
+    /// [`StreamBlocksInRange`] is better for large scans (single readahead iterator over [`CF_CANONICAL`]).
+    pub fn get_blocks_in_range(
+        &self,
+        start_height: u64,
+        end_height: u64,
+    ) -> Result<Vec<L2Block>, BlockStoreError> {
+        if start_height > end_height {
+            return Ok(Vec::new());
+        }
+        let mut blocks = Vec::with_capacity((end_height - start_height + 1) as usize);
+        for height in start_height..=end_height {
+            if let Some(block) = self.get_block_by_height(height)? {
+                blocks.push(block);
+            }
+        }
+        Ok(blocks)
+    }
+
     /// How many times [`Self::get_block`] reached RocksDB [`CF_BLOCKS`] after a cache miss (includes `Ok(None)` probes).
     ///
     /// **Tests / ops:** [`tests/blk_002_tests.rs`] asserts hits add zero; misses increment exactly once per call.
@@ -1272,22 +1323,9 @@ impl BlockStore {
         height: u64,
     ) -> Result<Option<L2Block>, BlockStoreError> {
         let store = self.clone();
-        tokio::task::spawn_blocking(move || {
-            let cf = store.cf(CF_CANONICAL)?;
-            let hk = height_key(height);
-            let Some(hash_bytes) = store.db.get_cf(cf, hk.as_slice())? else {
-                return Ok(None);
-            };
-            let arr: [u8; 32] = hash_bytes.as_slice().try_into().map_err(|_| {
-                BlockStoreError::Serialization(
-                    "get_block_by_height_async: CF_CANONICAL value must be exactly 32 bytes".into(),
-                )
-            })?;
-            let hash = Bytes32::new(arr);
-            store.get_block(&hash)
-        })
-        .await
-        .map_err(Self::map_spawn_join)?
+        tokio::task::spawn_blocking(move || store.get_block_by_height(height))
+            .await
+            .map_err(Self::map_spawn_join)?
     }
 
     /// Maps a failed [`tokio::task::spawn_blocking`] join handle onto [`BlockStoreError::Serialization`].
