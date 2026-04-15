@@ -123,6 +123,10 @@ pub fn test_config(db_path: PathBuf) -> BlockStoreConfig {
 ///
 /// **Algorithm:** [`STR-005`](../docs/requirements/domains/crate_structure/specs/STR-005.md) “Chain
 /// Builder” — seed parent with [`Bytes32::default`] (all-zero hash / genesis parent sentinel), then link.
+///
+/// **`dead_code`:** Each `[[test]]` binary includes this module independently; not every integration crate calls
+/// `build_chain`, so we silence `unused` here rather than duplicating helpers per test file.
+#[allow(dead_code)]
 pub fn build_chain(n: usize) -> Vec<L2Block> {
     let genesis_parent = Bytes32::default();
     let mut blocks = Vec::with_capacity(n);

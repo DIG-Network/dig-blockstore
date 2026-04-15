@@ -12,7 +12,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use chia_protocol::Bytes32;
-use dig_block::L2Block;
+use dig_block::{L2Block, L2BlockHeader};
 use parking_lot::RwLock;
 use rocksdb::{Options, WriteBatch, DB};
 
@@ -150,7 +150,8 @@ impl BlockStore {
         }
         // [`SER-001`](../docs/requirements/domains/serialization/specs/SER-001.md): bincode + zstd (dictionary when configured).
         let compressed = self.serialize_block(block)?;
-        let header_bytes = bincode::serialize(&block.header)?;
+        // [`SER-002`](../docs/requirements/domains/serialization/specs/SER-002.md): headers are bincode-only in `CF_HEADERS`.
+        let header_bytes = Self::serialize_header(&block.header)?;
         let tip = ChainTip { hash, height: 0 };
         let mut batch = WriteBatch::default();
         let cf_b = self.cf(CF_BLOCKS)?;
@@ -176,6 +177,26 @@ impl BlockStore {
     /// Blocks successfully verified present while warming on last [`Self::open`] ([`STR-004`](../docs/requirements/domains/crate_structure/specs/STR-004.md) / [`CAC-006`](../docs/requirements/domains/caching/specs/CAC-006_cache_warming_on_startup.md)).
     pub fn warm_blocks_loaded_count(&self) -> usize {
         self.warm_blocks_loaded.load(Ordering::Relaxed)
+    }
+
+    /// Serialize a block header for [`CF_HEADERS`] ([`SER-002`](../docs/requirements/domains/serialization/specs/SER-002.md)).
+    ///
+    /// **Write path (normative):** `L2BlockHeader` → [`bincode::serialize`] → raw bytes (no zstd). Headers are
+    /// small and read on every chain walk; skipping compression avoids framing overhead and decode latency
+    /// on the hot path ([`NORMATIVE.md` § SER-002](../docs/requirements/domains/serialization/NORMATIVE.md)).
+    ///
+    /// **Errors:** [`BlockStoreError::Serialization`] — same variant as corrupt block payloads so upper
+    /// layers can treat “bytes unusable” uniformly until ERR-* adds finer codes.
+    pub fn serialize_header(header: &L2BlockHeader) -> Result<Vec<u8>, BlockStoreError> {
+        bincode::serialize(header).map_err(|e| BlockStoreError::Serialization(e.to_string()))
+    }
+
+    /// Deserialize a header from [`CF_HEADERS`] bytes ([`SER-002`](../docs/requirements/domains/serialization/specs/SER-002.md)).
+    ///
+    /// **Read path:** raw bincode only — callers MUST NOT pass zstd-compressed payloads (those belong in [`CF_BLOCKS`]
+    /// via [`Self::deserialize_block`]).
+    pub fn deserialize_header(bytes: &[u8]) -> Result<L2BlockHeader, BlockStoreError> {
+        bincode::deserialize(bytes).map_err(|e| BlockStoreError::Serialization(e.to_string()))
     }
 
     /// Serialize then zstd-compress a block for [`CF_BLOCKS`] ([`SER-001`](../docs/requirements/domains/serialization/specs/SER-001.md)).

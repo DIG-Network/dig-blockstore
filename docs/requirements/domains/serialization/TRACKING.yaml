@@ -11,8 +11,9 @@ items:
 
   - id: SER-002
     title: Header Serialization
-    status: gap
+    status: done
     spec_ref: "13.2"
+    notes: "BlockStore::serialize_header/deserialize_header; init_genesis uses serialize_header; tests/ser_002_tests.rs"
 
   - id: SER-003
     title: Wire-Format Interop
