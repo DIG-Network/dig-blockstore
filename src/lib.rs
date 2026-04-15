@@ -23,7 +23,9 @@
 //!
 //! [`str001_dependency_smoke`] forces every direct `Cargo.toml` dependency to link,
 //! catching resolution failures early ([`STR-001`](../docs/requirements/domains/crate_structure/specs/STR-001.md)).
-#![forbid(unsafe_code)]
+// `memmap2` mapping constructors are `unsafe` ([`CAN-001`](docs/requirements/domains/canonical_chain/specs/CAN-001.md));
+// isolated, documented `unsafe` lives in [`crate::canonical::mmap`]. Use `deny` (not `forbid`) so that module can opt in.
+#![deny(unsafe_code)]
 
 pub mod cache;
 pub mod canonical;

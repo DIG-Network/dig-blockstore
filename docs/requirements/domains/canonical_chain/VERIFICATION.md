@@ -13,7 +13,7 @@
 
 | ID | Status | Summary | Verification Approach |
 |----|--------|---------|----------------------|
-| CAN-001 | gap | Dual-Layer Canonical Index | Delete canonical.bin, restart BlockStore, verify it is rebuilt from CF_CANONICAL. Verify lookups succeed via both mmap and RocksDB paths. Confirm mmap and CF_CANONICAL contain identical data after rebuild. |
+| CAN-001 | done | Dual-Layer Canonical Index | `tests/can_001_tests.rs` — dual write proof, delete/corrupt reopen rebuild, `disable_canonical_bin_acceleration` RocksDB fallback, 200-height mmap vs CF byte equality. |
 | CAN-002 | gap | canonical.bin Memory-Mapped File | Store blocks at heights 0..N, verify canonical.bin file size equals `(N+1) * 32`. Read raw bytes at `height * 32` and confirm they match the expected block hash. Verify zero-copy access via memmap2. |
 | CAN-003 | gap | set_canonical | Call set_canonical with a stored block hash, verify CF_CANONICAL contains the height-to-hash mapping, mmap file is updated, and BlockRecord.in_canonical_chain is true. Verify BlockNotInStore error for unknown hash. |
 | CAN-004 | gap | set_canonical_batch | Call set_canonical_batch with multiple hashes, verify all are written atomically. Simulate partial failure and confirm no partial writes to CF_CANONICAL. Verify mmap and records are updated for all hashes. |

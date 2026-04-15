@@ -14,7 +14,7 @@
 //! | `block_cache: LRUCache[bytes32, FullBlock]` | [`ShardedBlockCache`](crate::cache::sharded::ShardedBlockCache) (sharded LRU, [`CAC-001`]) |
 //! | `current_peak` single-row | [`META_TIP`](crate::META_TIP) in [`CF_METADATA`](crate::CF_METADATA) (40-byte [`ChainTip`]) |
 //! | `INSERT OR IGNORE` idempotency | [`put_block`](BlockStore::put_block) existence check → `Ok(false)` |
-//! | `BlockHeightMap` bytearray | [`CF_CANONICAL`](crate::CF_CANONICAL) height→hash index (future mmap in [`crate::canonical`]) |
+//! | `BlockHeightMap` bytearray | [`CF_CANONICAL`](crate::CF_CANONICAL) + `canonical.bin` mmap ([`CAN-001`](../docs/requirements/domains/canonical_chain/specs/CAN-001.md), [`crate::canonical::mmap`](crate::canonical::mmap)) |
 //!
 //! # Column family ownership
 //!
@@ -62,6 +62,7 @@
 //! - [`BLK-013`](../docs/requirements/domains/block_storage/specs/BLK-013.md) — `flush` / `compact` maintenance on the shared [`rocksdb::DB`].
 //! - [`BLK-014`](../docs/requirements/domains/block_storage/specs/BLK-014.md) — `get_blocks_in_range` and sync `get_block_by_height` over [`CF_CANONICAL`].
 //! - [`BLK-015`](../docs/requirements/domains/block_storage/specs/BLK-015.md) — `get_records_in_range` / `get_record_by_height` (header-derived, no block bodies).
+//! - [`CAN-001`](../docs/requirements/domains/canonical_chain/specs/CAN-001.md) — dual-layer canonical index (`canonical.bin` + [`CF_CANONICAL`]).
 //! - [`SER-001`](../docs/requirements/domains/serialization/specs/SER-001.md) — bincode + zstd block serialization.
 //! - [`SER-002`](../docs/requirements/domains/serialization/specs/SER-002.md) — bincode-only header serialization.
 //! - [`SER-005`](../docs/requirements/domains/serialization/specs/SER-005.md) — dictionary training and persistence.
@@ -86,6 +87,7 @@ use rand::seq::SliceRandom;
 use rocksdb::{ColumnFamily, Direction, IteratorMode, Options, ReadOptions, WriteBatch, DB};
 
 use crate::cache::sharded::{ShardedBlockCache, ShardedHeaderCache};
+use crate::canonical::mmap::CanonicalBin;
 use crate::cf_options;
 use crate::constants::{
     CF_ATTESTED, CF_BLOCKS, CF_CANONICAL, CF_CHECKPOINTS, CF_HEADERS, CF_METADATA,
@@ -190,6 +192,11 @@ pub struct BlockStoreInner {
     pipeline_channel_capacity: usize,
     /// Count of successful [`DB::write`](rocksdb::DB::write) calls issued **only** by the pipeline worker ([`tests/blk_008_tests.rs`]).
     pipeline_write_batches: AtomicUsize,
+    /// Dense height→hash mmap sidecar (`canonical.bin`) kept in lockstep with [`CF_CANONICAL`] ([`CAN-001`](../docs/requirements/domains/canonical_chain/specs/CAN-001.md)).
+    ///
+    /// **Reads:** [`parking_lot::RwLock::read`] for [`Self::resolve_canonical_hash_at_height`] (hot path). **Writes:**
+    /// [`RwLock::write`] after every successful RocksDB batch that touches the canonical index (`init_genesis`, [`BlockStore::put_block`], pipeline flush).
+    canonical_bin: RwLock<CanonicalBin>,
 }
 
 /// Primary handle for all block persistence APIs.
@@ -261,6 +268,8 @@ impl BlockStore {
         let cfs = cf_options::column_family_descriptors(&config);
         let db = DB::open_cf_descriptors(&opts, &config.path, cfs)?;
         let db = Arc::new(db);
+        let canonical_bin =
+            RwLock::new(CanonicalBin::open_synced(&db, config.path.as_path(), true)?);
         let zstd_dict =
             resolve_zstd_dictionary(&db, use_compression_dict, zstd_dictionary_override)?;
         let tip = load_tip(&db)?;
@@ -298,6 +307,7 @@ impl BlockStore {
                 pipeline_flush_ms: config.write_pipeline_flush_ms.max(1),
                 pipeline_channel_capacity: config.write_pipeline_channel_capacity.max(1),
                 pipeline_write_batches: AtomicUsize::new(0),
+                canonical_bin,
             }),
             pipeline_tx: Arc::new(tokio::sync::Mutex::new(None)),
         })
@@ -326,6 +336,7 @@ impl BlockStore {
         let cfs = cf_options::column_family_descriptors(&readonly_cfg);
         let db = DB::open_cf_descriptors_read_only(&opts, path, cfs, false)?;
         let db = Arc::new(db);
+        let canonical_bin = RwLock::new(CanonicalBin::open_synced(&db, path, false)?);
         let zstd_dict =
             resolve_zstd_dictionary(&db, use_compression_dict, zstd_dictionary_override)?;
         let tip = load_tip(&db)?;
@@ -361,6 +372,7 @@ impl BlockStore {
                 pipeline_flush_ms: readonly_cfg.write_pipeline_flush_ms.max(1),
                 pipeline_channel_capacity: readonly_cfg.write_pipeline_channel_capacity.max(1),
                 pipeline_write_batches: AtomicUsize::new(0),
+                canonical_bin,
             }),
             pipeline_tx: Arc::new(tokio::sync::Mutex::new(None)),
         })
@@ -408,6 +420,7 @@ impl BlockStore {
         batch.put_cf(meta, META_TIP.as_bytes(), tip.to_bytes().as_slice());
         batch.put_cf(meta, META_GENESIS_HASH.as_bytes(), hash.as_ref());
         self.db.write(batch)?;
+        self.canonical_bin.write().extend_write(0, &hash)?;
         *self.tip.write() = Some(tip);
         let record = BlockRecord::from_header(&block.header, BlockStatus::Validated);
         self.record_cache.lock().insert(hash, record);
@@ -415,6 +428,14 @@ impl BlockStore {
         self.header_cache.insert(hash, block.header.clone());
         self.maybe_train_dictionary()?;
         Ok(())
+    }
+
+    /// **Diagnostics / tests:** Disable the mmap acceleration layer so height→hash resolution uses [`CF_CANONICAL`]
+    /// only until the next [`BlockStore::open`] ([`CAN-001`](../docs/requirements/domains/canonical_chain/specs/CAN-001.md) test plan: mmap fallback).
+    ///
+    /// **Production:** Do not call — the next process restart re-syncs `canonical.bin` from RocksDB anyway.
+    pub fn disable_canonical_bin_acceleration(&self) {
+        self.canonical_bin.write().disable();
     }
 
     /// Current chain tip loaded from metadata / in-memory cache ([`CAN-007`](../docs/requirements/domains/canonical_chain/specs/CAN-007.md) preview).
@@ -738,17 +759,15 @@ impl BlockStore {
         self.block_cache.remove(hash);
     }
 
-    /// Look up the canonical block at `height` ([`CAN-006`](../docs/requirements/domains/canonical_chain/specs/CAN-006.md) precursor, [`BLK-014`](../docs/requirements/domains/block_storage/specs/BLK-014.md) building block).
-    ///
-    /// **Algorithm:** [`height_key`](crate::encoding::height_key)(`height`) → [`DB::get_cf`](rocksdb::DB::get_cf) on [`CF_CANONICAL`] →
-    /// decode 32-byte [`Bytes32`] → delegate to [`Self::get_block`] ([`BLK-002`](../docs/requirements/domains/block_storage/specs/BLK-002.md) decompress + cache).
-    ///
-    /// **Returns:** `Ok(None)` when the height index is absent **or** when the hash is indexed but the body row is
-    /// missing (same as [`Self::get_block`] returning `None`).
-    ///
-    /// **Threading:** Safe on any thread; performs synchronous RocksDB + zstd work — use [`Self::get_block_by_height_async`]
-    /// from async contexts that must not block the runtime ([`BLK-007`](../docs/requirements/domains/block_storage/specs/BLK-007.md)).
-    pub fn get_block_by_height(&self, height: u64) -> Result<Option<L2Block>, BlockStoreError> {
+    /// Resolve height→hash for the canonical chain: memory-mapped `canonical.bin` when available, otherwise
+    /// [`CF_CANONICAL`] ([`CAN-001`](../docs/requirements/domains/canonical_chain/specs/CAN-001.md), [`CAN-006`](../docs/requirements/domains/canonical_chain/specs/CAN-006.md) precursor).
+    fn resolve_canonical_hash_at_height(
+        &self,
+        height: u64,
+    ) -> Result<Option<Bytes32>, BlockStoreError> {
+        if let Some(arr) = self.canonical_bin.read().read_hash_bytes(height) {
+            return Ok(Some(Bytes32::new(arr)));
+        }
         let cf = self.cf(CF_CANONICAL)?;
         let hk = height_key(height);
         let Some(hash_bytes) = self.db.get_cf(cf, hk.as_slice())? else {
@@ -756,10 +775,27 @@ impl BlockStore {
         };
         let arr: [u8; 32] = hash_bytes.as_slice().try_into().map_err(|_| {
             BlockStoreError::Serialization(
-                "get_block_by_height: CF_CANONICAL value must be exactly 32 bytes".into(),
+                "resolve_canonical_hash_at_height: CF_CANONICAL value must be exactly 32 bytes"
+                    .into(),
             )
         })?;
-        let hash = Bytes32::new(arr);
+        Ok(Some(Bytes32::new(arr)))
+    }
+
+    /// Look up the canonical block at `height` ([`CAN-006`](../docs/requirements/domains/canonical_chain/specs/CAN-006.md) precursor, [`BLK-014`](../docs/requirements/domains/block_storage/specs/BLK-014.md) building block).
+    ///
+    /// **Algorithm:** [`Self::resolve_canonical_hash_at_height`] (mmap then [`CF_CANONICAL`]) → [`Self::get_block`]
+    /// ([`BLK-002`](../docs/requirements/domains/block_storage/specs/BLK-002.md) decompress + cache).
+    ///
+    /// **Returns:** `Ok(None)` when the height index is absent **or** when the hash is indexed but the body row is
+    /// missing (same as [`Self::get_block`] returning `None`).
+    ///
+    /// **Threading:** Safe on any thread; performs synchronous RocksDB + zstd work — use [`Self::get_block_by_height_async`]
+    /// from async contexts that must not block the runtime ([`BLK-007`](../docs/requirements/domains/block_storage/specs/BLK-007.md)).
+    pub fn get_block_by_height(&self, height: u64) -> Result<Option<L2Block>, BlockStoreError> {
+        let Some(hash) = self.resolve_canonical_hash_at_height(height)? else {
+            return Ok(None);
+        };
         self.get_block(&hash)
     }
 
@@ -794,21 +830,15 @@ impl BlockStore {
     /// so misses load **bincode headers only** from [`CF_HEADERS`] ([`SER-002`](../docs/requirements/domains/serialization/specs/SER-002.md)) — no zstd frame read from [`CF_BLOCKS`].
     ///
     /// **Returns:** `Ok(None)` when the height index is missing or when neither [`CF_HEADERS`] nor caches can supply a header.
+    ///
+    /// **Canonical resolution:** Same [`Self::resolve_canonical_hash_at_height`] dual layer as [`Self::get_block_by_height`] ([`CAN-001`](../docs/requirements/domains/canonical_chain/specs/CAN-001.md)).
     pub fn get_record_by_height(
         &self,
         height: u64,
     ) -> Result<Option<BlockRecord>, BlockStoreError> {
-        let cf = self.cf(CF_CANONICAL)?;
-        let hk = height_key(height);
-        let Some(hash_bytes) = self.db.get_cf(cf, hk.as_slice())? else {
+        let Some(hash) = self.resolve_canonical_hash_at_height(height)? else {
             return Ok(None);
         };
-        let arr: [u8; 32] = hash_bytes.as_slice().try_into().map_err(|_| {
-            BlockStoreError::Serialization(
-                "get_record_by_height: CF_CANONICAL value must be exactly 32 bytes".into(),
-            )
-        })?;
-        let hash = Bytes32::new(arr);
         self.get_record(&hash)
     }
 
@@ -1017,6 +1047,11 @@ impl BlockStore {
             batch.put_cf(cf_c, height_key(block.height()), hash_key(&hash).as_slice());
         }
         self.db.write(batch)?;
+        if canonical {
+            self.canonical_bin
+                .write()
+                .extend_write(block.height(), &hash)?;
+        }
         let record = BlockRecord::from_header(&block.header, BlockStatus::Validated);
         self.record_cache.lock().insert(hash, record);
         self.block_cache.insert(hash, block.clone());
@@ -1605,6 +1640,24 @@ fn flush_pipeline_batch(
                 .send(Err(BlockStoreError::Serialization(msg.clone())));
         }
         return Ok(());
+    }
+
+    for row in &staged {
+        if row.canonical {
+            if let Err(e) = store
+                .canonical_bin
+                .write()
+                .extend_write(row.block.height(), &row.hash)
+            {
+                let msg = format!("write pipeline: canonical.bin mmap update failed: {e}");
+                for row in staged {
+                    let _ = row
+                        .ack
+                        .send(Err(BlockStoreError::Serialization(msg.clone())));
+                }
+                return Ok(());
+            }
+        }
     }
 
     store.pipeline_write_batches.fetch_add(1, Ordering::Relaxed);

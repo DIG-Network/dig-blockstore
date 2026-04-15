@@ -5,10 +5,11 @@ items:
   - id: CAN-001
     section: "Canonical Chain"
     summary: "Dual-Layer Canonical Index"
-    status: gap
+    status: implemented
     spec_ref: "docs/requirements/domains/canonical_chain/specs/CAN-001.md"
-    tests: []
-    notes: ""
+    tests:
+      - tests/can_001_tests.rs
+    notes: "canonical.bin + BlockStore::open_synced rebuild; resolve_canonical_hash_at_height"
 
   - id: CAN-002
     section: "Canonical Chain"

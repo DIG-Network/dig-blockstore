@@ -34,7 +34,7 @@ use std::process::Command;
 use dig_blockstore::cache::sharded::{ShardedBlockCache, ShardedHeaderCache};
 use dig_blockstore::cache::warming::CacheWarming;
 use dig_blockstore::canonical::index::CanonicalIndex;
-use dig_blockstore::canonical::mmap::CanonicalMmap;
+use dig_blockstore::canonical::mmap::CANONICAL_BIN_FILE;
 use dig_blockstore::cf_options;
 use dig_blockstore::compression::CompressionPipeline;
 use dig_blockstore::config::BlockStoreConfig;
@@ -112,7 +112,7 @@ fn test_each_module_defines_required_public_items() {
     let _ = core::mem::size_of::<ShardedHeaderCache>();
     let _ = core::mem::size_of::<CacheWarming>();
     let _ = core::mem::size_of::<CanonicalIndex>();
-    let _ = core::mem::size_of::<CanonicalMmap>();
+    let _ = CANONICAL_BIN_FILE.len();
     let _ = core::mem::size_of::<CompressionPipeline>();
     let _ = cf_options::column_family_descriptors(&BlockStoreConfig::default()).len();
     let _ = core::mem::size_of::<BlockWritePipeline>();

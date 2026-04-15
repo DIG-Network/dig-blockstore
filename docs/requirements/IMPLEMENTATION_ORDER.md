@@ -67,7 +67,7 @@ After completing a requirement: write tests, verify they pass, update TRACKING.y
 
 ## Phase 6: Canonical Chain
 
-- [ ] CAN-001 — Dual-layer canonical index (mmap hot path + CF_CANONICAL cold path)
+- [x] CAN-001 — Dual-layer canonical index (mmap hot path + CF_CANONICAL cold path)
 - [ ] CAN-002 — canonical.bin memory-mapped file (dense array of 32-byte hashes)
 - [ ] CAN-003 — set_canonical (mark existing block as canonical, update index)
 - [ ] CAN-004 — set_canonical_batch (batch marking for reorg)
