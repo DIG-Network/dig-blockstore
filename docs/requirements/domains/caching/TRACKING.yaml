@@ -5,18 +5,27 @@ crate: dig-blockstore
 items:
   - id: CAC-001
     title: Sharded Block Cache
-    status: gap
+    status: implemented
     spec_ref: "11.1"
+    tests:
+      - tests/cac_001_tests.rs
+    notes: "ShardedBlockCache type alias over ShardedLruCache<L2Block>; 16 default shards; 7 tests"
 
   - id: CAC-002
     title: Sharded Header Cache
-    status: gap
+    status: implemented
     spec_ref: "11.2"
+    tests:
+      - tests/cac_002_tests.rs
+    notes: "ShardedHeaderCache independent from block cache; default 2000 capacity; 7 tests"
 
   - id: CAC-003
     title: BlockRecord Cache
-    status: gap
+    status: implemented
     spec_ref: "11.3"
+    tests:
+      - tests/cac_003_tests.rs
+    notes: "Mutex<HashMap> in-memory only; derive on miss via from_header; 7 tests"
 
   - id: CAC-004
     title: Canonical Height Index Cache

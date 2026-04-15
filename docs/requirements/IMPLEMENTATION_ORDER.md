@@ -77,9 +77,9 @@ After completing a requirement: write tests, verify they pass, update TRACKING.y
 
 ## Phase 7: Caching
 
-- [ ] CAC-001 — Sharded block cache (16 shards, configurable capacity)
-- [ ] CAC-002 — Sharded header cache
-- [ ] CAC-003 — BlockRecord cache (in-memory only, derive on miss)
+- [x] CAC-001 — Sharded block cache (16 shards, configurable capacity)
+- [x] CAC-002 — Sharded header cache
+- [x] CAC-003 — BlockRecord cache (in-memory only, derive on miss)
 - [ ] CAC-004 — Canonical height index cache
 - [ ] CAC-005 — Hash-to-height reverse lookup cache
 - [ ] CAC-006 — Cache warming on startup (preload recent blocks/headers)
