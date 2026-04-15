@@ -398,6 +398,19 @@ impl CanonicalBin {
         }
     }
 
+    /// Truncate `canonical.bin` so that heights above `max_height` are removed.
+    ///
+    /// The file is resized to `(max_height + 1) * 32` bytes, and the mmap is remapped.
+    /// On [`Self::Disabled`] or [`Self::Ro`], this is a no-op (no file to truncate).
+    ///
+    /// **Used by:** [`BlockStore::rollback_to_height`](crate::store::BlockStore) ([`ROR-001`]).
+    pub(crate) fn truncate_to_height(&mut self, max_height: u64) -> Result<(), BlockStoreError> {
+        match self {
+            Self::Rw(d) => d.truncate(max_height),
+            _ => Ok(()),
+        }
+    }
+
     /// **Diagnostics / CAN-001 tests:** Turn off mmap reads so the store exercises RocksDB fallback.
     pub(crate) fn disable(&mut self) {
         *self = Self::Disabled;

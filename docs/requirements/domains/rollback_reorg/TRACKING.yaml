@@ -5,10 +5,11 @@ items:
   - id: ROR-001
     section: "Rollback & Reorg"
     summary: "Rollback to Height"
-    status: gap
+    status: implemented
     spec_ref: "docs/requirements/domains/rollback_reorg/specs/ROR-001.md"
-    tests: []
-    notes: ""
+    tests:
+      - tests/ror_005_tests.rs
+    notes: "rollback_to_height: validation → collect → WriteBatch delete CF_CANONICAL → truncate mmap → set_tip → update caches; 6 tests (shared with ROR-005)"
 
   - id: ROR-002
     section: "Rollback & Reorg"
@@ -37,15 +38,17 @@ items:
   - id: ROR-005
     section: "Rollback & Reorg"
     summary: "Rollback Boundary Validation"
-    status: gap
+    status: implemented
     spec_ref: "docs/requirements/domains/rollback_reorg/specs/ROR-005.md"
-    tests: []
-    notes: ""
+    tests:
+      - tests/ror_005_tests.rs
+    notes: "NoTip, RollbackAboveTip, RollbackBelowMin checked in order; min_retained_height() returns 0 when no pruning; 6 tests"
 
   - id: ROR-006
     section: "Rollback & Reorg"
     summary: "Blocks to Revert"
-    status: gap
+    status: implemented
     spec_ref: "docs/requirements/domains/rollback_reorg/specs/ROR-006.md"
-    tests: []
-    notes: ""
+    tests:
+      - tests/ror_006_tests.rs
+    notes: "blocks_to_revert: read-only descending walk from tip; no mutation; 5 tests"

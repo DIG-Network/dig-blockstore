@@ -1455,6 +1455,142 @@ impl BlockStore {
         Ok(true)
     }
 
+    // -----------------------------------------------------------------------
+    // Rollback & Reorg (ROR domain)
+    // -----------------------------------------------------------------------
+
+    /// Public accessor for the pruning floor: minimum retained block height.
+    ///
+    /// Returns `0` when no pruning has occurred (all heights retained).
+    /// After [`PRN-001`] runs, this reflects the `META_MIN_HEIGHT` value in `CF_METADATA`.
+    ///
+    /// **Requirement:** [`ROR-005`](../docs/requirements/domains/rollback_reorg/specs/ROR-005.md).
+    pub fn min_retained_height(&self) -> Result<u64, BlockStoreError> {
+        Ok(self.read_min_retained_height()?.unwrap_or(0))
+    }
+
+    /// Read-only preview: which canonical blocks would be reverted by a rollback to `target_height`.
+    ///
+    /// Returns hashes in **descending** height order (tip first). Returns empty `Vec` when
+    /// no tip is set or `target_height >= tip.height`. Does NOT modify any state.
+    ///
+    /// **Requirement:** [`ROR-006`](../docs/requirements/domains/rollback_reorg/specs/ROR-006.md).
+    pub fn blocks_to_revert(&self, target_height: u64) -> Result<Vec<Bytes32>, BlockStoreError> {
+        let Some(current_tip) = self.tip() else {
+            return Ok(Vec::new());
+        };
+        if target_height >= current_tip.height {
+            return Ok(Vec::new());
+        }
+        let mut reverted = Vec::new();
+        for h in (target_height + 1..=current_tip.height).rev() {
+            if let Some(hash) = self.get_hash_by_height(h)? {
+                reverted.push(hash);
+            }
+        }
+        Ok(reverted)
+    }
+
+    /// Revert the canonical chain to `target_height`, removing higher heights from
+    /// the canonical index and updating the tip.
+    ///
+    /// # Validation ([`ROR-005`](../docs/requirements/domains/rollback_reorg/specs/ROR-005.md))
+    ///
+    /// Checked in order before any mutation:
+    /// 1. **NoTip** — no chain tip set.
+    /// 2. **RollbackAboveTip** — `target_height > tip.height`.
+    /// 3. **RollbackBelowMin** — `target_height < min_retained_height()`.
+    ///
+    /// # Mutation ([`ROR-001`](../docs/requirements/domains/rollback_reorg/specs/ROR-001.md))
+    ///
+    /// 1. Collect reverted hashes from tip down to `target_height + 1`.
+    /// 2. `WriteBatch` deletes on CF_CANONICAL for each reverted height.
+    /// 3. Truncate `canonical.bin` to `(target_height + 1) * 32`.
+    /// 4. Update tip to the block at `target_height`.
+    /// 5. Mark reverted blocks as non-canonical in record_cache.
+    /// 6. Evict reverted heights from canonical_height_cache.
+    ///
+    /// # Returns
+    ///
+    /// Hashes of reverted blocks in **descending** height order (tip first).
+    /// Returns empty Vec for a no-op rollback at the current tip.
+    /// Block data in CF_BLOCKS is NOT deleted (fork preservation per ROR-004).
+    pub fn rollback_to_height(&self, target_height: u64) -> Result<Vec<Bytes32>, BlockStoreError> {
+        if self.read_only {
+            return Err(BlockStoreError::Serialization(
+                ERR_MUTATION_READ_ONLY.into(),
+            ));
+        }
+        // ROR-005: boundary validation (in order: NoTip, AboveTip, BelowMin)
+        let current_tip = self.tip().ok_or(BlockStoreError::NoTip)?;
+        if target_height > current_tip.height {
+            return Err(BlockStoreError::RollbackAboveTip {
+                target: target_height,
+                tip: current_tip.height,
+            });
+        }
+        let min_height = self.min_retained_height()?;
+        if target_height < min_height {
+            return Err(BlockStoreError::RollbackBelowMin {
+                target: target_height,
+                min: min_height,
+            });
+        }
+        // No-op: rollback at current tip
+        if target_height == current_tip.height {
+            return Ok(Vec::new());
+        }
+
+        // Collect hashes to revert (descending order)
+        let mut reverted = Vec::new();
+        for h in (target_height + 1..=current_tip.height).rev() {
+            if let Some(hash) = self.get_hash_by_height(h)? {
+                reverted.push(hash);
+            }
+        }
+
+        // WriteBatch: delete CF_CANONICAL entries for reverted heights
+        let cf_c = self.cf(CF_CANONICAL)?;
+        let mut batch = WriteBatch::default();
+        for h in target_height + 1..=current_tip.height {
+            batch.delete_cf(cf_c, height_key(h));
+        }
+        self.db.write(batch)?;
+
+        // Truncate canonical.bin (mmap) to (target_height + 1) * 32
+        self.canonical_bin
+            .write()
+            .truncate_to_height(target_height)?;
+
+        // Update tip to block at target_height
+        if let Some(target_hash) = self.get_hash_by_height(target_height)? {
+            self.set_tip(ChainTip {
+                hash: target_hash,
+                height: target_height,
+            })?;
+        }
+
+        // Mark reverted blocks as non-canonical in record_cache
+        {
+            let mut cache = self.record_cache.lock();
+            for hash in &reverted {
+                if let Some(r) = cache.get_mut(hash) {
+                    r.in_canonical_chain = false;
+                }
+            }
+        }
+
+        // Evict reverted heights from canonical_height_cache (CAC-004)
+        {
+            let mut hcache = self.canonical_height_cache.write();
+            for h in target_height + 1..=current_tip.height {
+                hcache.remove(&h);
+            }
+        }
+
+        Ok(reverted)
+    }
+
     /// **[`BLK-009`](../docs/requirements/domains/block_storage/specs/BLK-009.md)** — Persist an [`AttestedBlock`] under the block’s hash key.
     ///
     /// **Key:** [`hash_key`](crate::encoding::hash_key)(`hash`) — raw 32 bytes in [`CF_ATTESTED`] ([`KEY-001`](../docs/requirements/domains/key_encoding/specs/KEY-001_hash_keys.md)), identical key shape to [`CF_BLOCKS`] / [`CF_HEADERS`].
