@@ -37,10 +37,15 @@ pub fn block_to_wire_bytes(block: &L2Block) -> Result<Vec<u8>, BlockStoreError> 
 
 /// Deserialize wire bytes from a peer into [`L2Block`] ([`SER-003`](../docs/requirements/domains/serialization/specs/SER-003.md)).
 ///
-/// **Pipeline:** [`L2Block::from_bytes`] — rejects trailing garbage ([`Streamable::from_bytes`] contract).
+/// **Pipeline:** [`Streamable::from_bytes`] — rejects trailing garbage.
+///
+/// **Important:** Uses explicit UFCS (`<L2Block as Streamable>::from_bytes`) because
+/// `dig_block::L2Block` has an **inherent** `from_bytes` method that uses a different
+/// deserialization path (BlockError-based). The Streamable trait method is the correct
+/// one for wire-format compatibility with the Chia protocol.
 ///
 /// **Errors:** Malformed frames map to [`BlockStoreError::Serialization`] (never [`BlockStoreError::Compression`]).
 pub fn block_from_wire_bytes(bytes: &[u8]) -> Result<L2Block, BlockStoreError> {
-    L2Block::from_bytes(bytes)
+    <L2Block as Streamable>::from_bytes(bytes)
         .map_err(|e| BlockStoreError::Serialization(format!("wire deserialization failed: {e}")))
 }
