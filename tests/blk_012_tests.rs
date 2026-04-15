@@ -41,7 +41,7 @@ fn flush_db_for_size_property(path: &Path) {
     let mut opts = rocksdb::Options::default();
     opts.create_if_missing(true);
     opts.create_missing_column_families(true);
-    let cfs = cf_options::column_family_descriptors(&cfg);
+    let cfs = cf_options::column_family_descriptors(&cfg, None);
     let db = rocksdb::DB::open_cf_descriptors(&opts, path, cfs).expect("reopen for flush");
     db.flush().expect("rocksdb flush");
 }
@@ -55,7 +55,7 @@ fn write_meta_min_height_raw(path: &Path, height: u64) {
     let mut opts = rocksdb::Options::default();
     opts.create_if_missing(true);
     opts.create_missing_column_families(true);
-    let cfs = cf_options::column_family_descriptors(&cfg);
+    let cfs = cf_options::column_family_descriptors(&cfg, None);
     let db = rocksdb::DB::open_cf_descriptors(&opts, path, cfs).expect("reopen for meta");
     let meta = db.cf_handle(CF_METADATA).expect("metadata cf");
     db.put_cf(meta, META_MIN_HEIGHT.as_bytes(), height.to_le_bytes())

@@ -299,7 +299,7 @@ fn test_metadata_cf_level_compaction() {
 #[test]
 fn test_column_family_descriptors_public_api_order_matches_typ001() {
     let cfg = BlockStoreConfig::default();
-    let descs = cf_options::column_family_descriptors(&cfg);
+    let descs = cf_options::column_family_descriptors(&cfg, None);
 
     let names: Vec<&str> = descs.iter().map(|d| d.name()).collect();
 

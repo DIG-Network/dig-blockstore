@@ -132,7 +132,7 @@ fn test_stored_checkpoint_cf_checkpoints_roundtrip() {
     let mut opts = Options::default();
     opts.create_if_missing(true);
     opts.create_missing_column_families(true);
-    let cfs = cf_options::column_family_descriptors(&cfg);
+    let cfs = cf_options::column_family_descriptors(&cfg, None);
     let db = DB::open_cf_descriptors(&opts, &path, cfs).expect("open_cf_descriptors");
 
     let cf = db

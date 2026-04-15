@@ -115,7 +115,7 @@ fn test_each_module_defines_required_public_items() {
     let _ = CANONICAL_BIN_FILE.len();
     let _ = core::mem::size_of::<CanonicalDenseFile>();
     let _ = core::mem::size_of::<CompressionPipeline>();
-    let _ = cf_options::column_family_descriptors(&BlockStoreConfig::default()).len();
+    let _ = cf_options::column_family_descriptors(&BlockStoreConfig::default(), None).len();
     let _ = core::mem::size_of::<BlockWritePipeline>();
     let _ = core::mem::size_of::<SnapshotIo>();
 
