@@ -24,3 +24,26 @@
 /// Marker type reserved for future wiring tests. Not used by production code yet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct DigEpochStub;
+
+/// Default number of blocks per epoch in the stub.
+///
+/// The real `dig-epoch` crate will derive this from `dig-constants::NetworkConstants`.
+/// For now this matches DIG testnet conventions (32 blocks per epoch, analogous to
+/// Chia's 32 sub-slots per sub-epoch).
+pub const BLOCKS_PER_EPOCH: u64 = 32;
+
+/// Return the inclusive height range `[start, end]` for a given epoch number.
+///
+/// **Stub implementation:** `start = epoch * BLOCKS_PER_EPOCH`, `end = start + BLOCKS_PER_EPOCH - 1`.
+///
+/// **Migration:** When the real `dig-epoch` crate ships, this function will be replaced
+/// by proper epoch arithmetic that handles variable-size epochs and genesis edge cases.
+///
+/// **Used by:** [`CAN-006`](../../../docs/requirements/domains/canonical_chain/specs/CAN-006.md)
+/// `get_epoch_block_hashes`.
+#[must_use]
+pub fn epoch_height_range(epoch: u64) -> (u64, u64) {
+    let start = epoch.saturating_mul(BLOCKS_PER_EPOCH);
+    let end = start.saturating_add(BLOCKS_PER_EPOCH - 1);
+    (start, end)
+}

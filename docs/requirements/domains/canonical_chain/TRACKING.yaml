@@ -49,10 +49,11 @@ items:
   - id: CAN-006
     section: "Canonical Chain"
     summary: "get_hash_by_height"
-    status: gap
+    status: implemented
     spec_ref: "docs/requirements/domains/canonical_chain/specs/CAN-006.md"
-    tests: []
-    notes: ""
+    tests:
+      - tests/can_006_tests.rs
+    notes: "Public get_hash_by_height (mmap+CF dual layer), get_header_by_height, get_epoch_block_hashes via dig-epoch stub; 10 tests"
 
   - id: CAN-007
     section: "Canonical Chain"

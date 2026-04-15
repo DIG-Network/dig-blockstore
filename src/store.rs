@@ -196,7 +196,7 @@ pub struct BlockStoreInner {
     pipeline_write_batches: AtomicUsize,
     /// Dense height→hash mmap sidecar (`canonical.bin`) kept in lockstep with [`CF_CANONICAL`] ([`CAN-001`](../docs/requirements/domains/canonical_chain/specs/CAN-001.md)).
     ///
-    /// **Reads:** [`parking_lot::RwLock::read`] for [`Self::resolve_canonical_hash_at_height`] (hot path). **Writes:**
+    /// **Reads:** [`parking_lot::RwLock::read`] for [`Self::get_hash_by_height`] (hot path). **Writes:**
     /// [`RwLock::write`] after every successful RocksDB batch that touches the canonical index (`init_genesis`, [`BlockStore::put_block`], pipeline flush).
     canonical_bin: RwLock<CanonicalBin>,
 }
@@ -831,12 +831,32 @@ impl BlockStore {
         self.block_cache.remove(hash);
     }
 
-    /// Resolve height→hash for the canonical chain: memory-mapped `canonical.bin` when available, otherwise
-    /// [`CF_CANONICAL`] ([`CAN-001`](../docs/requirements/domains/canonical_chain/specs/CAN-001.md), [`CAN-006`](../docs/requirements/domains/canonical_chain/specs/CAN-006.md) precursor).
-    fn resolve_canonical_hash_at_height(
-        &self,
-        height: u64,
-    ) -> Result<Option<Bytes32>, BlockStoreError> {
+    /// Look up the canonical block hash at a given chain height.
+    ///
+    /// # Algorithm (dual-layer, [`CAN-006`](../docs/requirements/domains/canonical_chain/specs/CAN-006.md))
+    ///
+    /// 1. **Hot path — mmap** (`canonical.bin`): O(1) pointer-offset read at `height * 32`.
+    ///    ~10ns when the page is OS-cache-resident. Consulted first.
+    /// 2. **Cold path — RocksDB** ([`CF_CANONICAL`]): 1-10us key lookup with big-endian
+    ///    height key. Used when mmap is unavailable, disabled, or doesn't cover the height.
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(Some(hash))` — height has a canonical block.
+    /// - `Ok(None)` — height is beyond the chain or was never canonicalized.
+    ///
+    /// # Chia analogy
+    ///
+    /// Corresponds to `Blockchain.height_to_hash(height)` in Chia, which reads from
+    /// an in-memory `BlockHeightMap` bytearray. DIG adds the durable RocksDB fallback.
+    ///
+    /// # Derived methods
+    ///
+    /// [`get_block_by_height`](Self::get_block_by_height),
+    /// [`get_header_by_height`](Self::get_header_by_height),
+    /// [`get_record_by_height`](Self::get_record_by_height), and
+    /// [`get_epoch_block_hashes`](Self::get_epoch_block_hashes) all delegate through this.
+    pub fn get_hash_by_height(&self, height: u64) -> Result<Option<Bytes32>, BlockStoreError> {
         if let Some(arr) = self.canonical_bin.read().read_hash_bytes(height) {
             return Ok(Some(Bytes32::new(arr)));
         }
@@ -847,8 +867,7 @@ impl BlockStore {
         };
         let arr: [u8; 32] = hash_bytes.as_slice().try_into().map_err(|_| {
             BlockStoreError::Serialization(
-                "resolve_canonical_hash_at_height: CF_CANONICAL value must be exactly 32 bytes"
-                    .into(),
+                "get_hash_by_height: CF_CANONICAL value must be exactly 32 bytes".into(),
             )
         })?;
         Ok(Some(Bytes32::new(arr)))
@@ -856,7 +875,7 @@ impl BlockStore {
 
     /// Look up the canonical block at `height` ([`CAN-006`](../docs/requirements/domains/canonical_chain/specs/CAN-006.md) precursor, [`BLK-014`](../docs/requirements/domains/block_storage/specs/BLK-014.md) building block).
     ///
-    /// **Algorithm:** [`Self::resolve_canonical_hash_at_height`] (mmap then [`CF_CANONICAL`]) → [`Self::get_block`]
+    /// **Algorithm:** [`Self::get_hash_by_height`] (mmap then [`CF_CANONICAL`]) → [`Self::get_block`]
     /// ([`BLK-002`](../docs/requirements/domains/block_storage/specs/BLK-002.md) decompress + cache).
     ///
     /// **Returns:** `Ok(None)` when the height index is absent **or** when the hash is indexed but the body row is
@@ -865,7 +884,7 @@ impl BlockStore {
     /// **Threading:** Safe on any thread; performs synchronous RocksDB + zstd work — use [`Self::get_block_by_height_async`]
     /// from async contexts that must not block the runtime ([`BLK-007`](../docs/requirements/domains/block_storage/specs/BLK-007.md)).
     pub fn get_block_by_height(&self, height: u64) -> Result<Option<L2Block>, BlockStoreError> {
-        let Some(hash) = self.resolve_canonical_hash_at_height(height)? else {
+        let Some(hash) = self.get_hash_by_height(height)? else {
             return Ok(None);
         };
         self.get_block(&hash)
@@ -903,15 +922,59 @@ impl BlockStore {
     ///
     /// **Returns:** `Ok(None)` when the height index is missing or when neither [`CF_HEADERS`] nor caches can supply a header.
     ///
-    /// **Canonical resolution:** Same [`Self::resolve_canonical_hash_at_height`] dual layer as [`Self::get_block_by_height`] ([`CAN-001`](../docs/requirements/domains/canonical_chain/specs/CAN-001.md)).
+    /// **Canonical resolution:** Same [`Self::get_hash_by_height`] dual layer as [`Self::get_block_by_height`] ([`CAN-001`](../docs/requirements/domains/canonical_chain/specs/CAN-001.md)).
     pub fn get_record_by_height(
         &self,
         height: u64,
     ) -> Result<Option<BlockRecord>, BlockStoreError> {
-        let Some(hash) = self.resolve_canonical_hash_at_height(height)? else {
+        let Some(hash) = self.get_hash_by_height(height)? else {
             return Ok(None);
         };
         self.get_record(&hash)
+    }
+
+    /// Look up the canonical header at `height` ([`CAN-006`](../docs/requirements/domains/canonical_chain/specs/CAN-006.md)).
+    ///
+    /// **Algorithm:** [`Self::get_hash_by_height`] → [`Self::get_header`]
+    /// ([`BLK-003`](../docs/requirements/domains/block_storage/specs/BLK-003.md) cache + bincode).
+    ///
+    /// **Returns:** `Ok(None)` when the height is not canonical or the header row is absent.
+    ///
+    /// **Lighter than `get_block_by_height`:** Headers are uncompressed bincode (~700 bytes)
+    /// versus full block bodies (zstd decompression + larger payload). Use this when only
+    /// header fields are needed (e.g., parent-hash walks, timestamp checks).
+    pub fn get_header_by_height(
+        &self,
+        height: u64,
+    ) -> Result<Option<L2BlockHeader>, BlockStoreError> {
+        let Some(hash) = self.get_hash_by_height(height)? else {
+            return Ok(None);
+        };
+        self.get_header(&hash)
+    }
+
+    /// Collect canonical block hashes for all heights in the given epoch.
+    ///
+    /// **Algorithm:** Uses [`dig_epoch::epoch_height_range`] to determine the `[start, end]`
+    /// height range, then calls [`Self::get_hash_by_height`] for each height. Stops early
+    /// when a height returns `None` (chain hasn't reached that height yet).
+    ///
+    /// **Returns:** A `Vec<Bytes32>` containing one hash per canonical height in the epoch,
+    /// in ascending height order. May be shorter than `BLOCKS_PER_EPOCH` if the chain is
+    /// still growing into the epoch, or empty if the epoch is entirely beyond the chain tip.
+    ///
+    /// **Requirement:** [`CAN-006`](../docs/requirements/domains/canonical_chain/specs/CAN-006.md) § Epoch Block Hashes.
+    pub fn get_epoch_block_hashes(&self, epoch: u64) -> Result<Vec<Bytes32>, BlockStoreError> {
+        let (start, end) = dig_epoch::epoch_height_range(epoch);
+        let mut hashes = Vec::new();
+        for height in start..=end {
+            if let Some(hash) = self.get_hash_by_height(height)? {
+                hashes.push(hash);
+            } else {
+                break; // chain hasn't reached this height yet
+            }
+        }
+        Ok(hashes)
     }
 
     /// **[`BLK-015`](../docs/requirements/domains/block_storage/specs/BLK-015.md)** — Materialize canonical [`BlockRecord`]s for `[start_height, end_height]` inclusive ([`NORMATIVE` BLK-015](../docs/requirements/domains/block_storage/NORMATIVE.md#blk-015-get-records-in-range-get_records_in_range)).
