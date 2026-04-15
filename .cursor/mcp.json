@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "gitnexus": {
+      "command": "npx",
+      "args": ["-y", "gitnexus@latest", "mcp"],
+      "cwd": "${workspaceFolder}"
+    },
+    "socraticode": {
+      "command": "npx",
+      "args": ["-y", "socraticode"],
+      "cwd": "${workspaceFolder}"
+    }
+  }
+}
