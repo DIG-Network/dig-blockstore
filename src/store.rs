@@ -1816,6 +1816,110 @@ impl BlockStore {
         Ok(Some(attested))
     }
 
+    // -----------------------------------------------------------------------
+    // Checkpoint Storage (CKP domain)
+    // -----------------------------------------------------------------------
+
+    /// Persist a [`StoredCheckpoint`] to [`CF_CHECKPOINTS`] keyed by epoch.
+    ///
+    /// **Key:** [`epoch_key`](crate::encoding::epoch_key)(`checkpoint.checkpoint.epoch`) — 8-byte big-endian.
+    /// **Value:** [`bincode::serialize`] of the full [`StoredCheckpoint`].
+    /// **Idempotent:** overwrites any existing checkpoint at the same epoch.
+    ///
+    /// **Requirement:** [`CKP-001`](../docs/requirements/domains/checkpoint_storage/specs/CKP-001_put_checkpoint.md).
+    pub fn put_checkpoint(
+        &self,
+        checkpoint: &crate::StoredCheckpoint,
+    ) -> Result<(), BlockStoreError> {
+        if self.read_only {
+            return Err(BlockStoreError::Serialization(
+                ERR_MUTATION_READ_ONLY.into(),
+            ));
+        }
+        let epoch = checkpoint.checkpoint.epoch;
+        let key = crate::encoding::epoch_key(epoch);
+        let value = checkpoint
+            .encode_bincode()
+            .map_err(|e| BlockStoreError::Serialization(e.to_string()))?;
+        let cf = self.cf(CF_CHECKPOINTS)?;
+        self.db.put_cf(cf, key.as_slice(), &value)?;
+        Ok(())
+    }
+
+    /// Retrieve a [`StoredCheckpoint`] by epoch from [`CF_CHECKPOINTS`].
+    ///
+    /// Returns `Ok(None)` if no checkpoint exists for the given epoch.
+    ///
+    /// **Requirement:** [`CKP-002`](../docs/requirements/domains/checkpoint_storage/specs/CKP-002_get_checkpoint.md).
+    pub fn get_checkpoint(
+        &self,
+        epoch: u64,
+    ) -> Result<Option<crate::StoredCheckpoint>, BlockStoreError> {
+        let cf = self.cf(CF_CHECKPOINTS)?;
+        let key = crate::encoding::epoch_key(epoch);
+        let Some(bytes) = self.db.get_cf(cf, key.as_slice())? else {
+            return Ok(None);
+        };
+        let checkpoint = crate::StoredCheckpoint::decode_bincode(&bytes)
+            .map_err(|e| BlockStoreError::Serialization(e.to_string()))?;
+        Ok(Some(checkpoint))
+    }
+
+    /// Retrieve the most recent checkpoint (highest epoch) via reverse iterator.
+    ///
+    /// Returns `Ok(None)` if no checkpoints are stored.
+    ///
+    /// **Requirement:** [`CKP-003`](../docs/requirements/domains/checkpoint_storage/specs/CKP-003_get_latest_checkpoint.md).
+    pub fn get_latest_checkpoint(
+        &self,
+    ) -> Result<Option<crate::StoredCheckpoint>, BlockStoreError> {
+        let cf = self.cf(CF_CHECKPOINTS)?;
+        let mut iter = self.db.iterator_cf(cf, IteratorMode::End);
+        let Some(item) = iter.next() else {
+            return Ok(None);
+        };
+        let (_key, value) = item?;
+        let checkpoint = crate::StoredCheckpoint::decode_bincode(&value)
+            .map_err(|e| BlockStoreError::Serialization(e.to_string()))?;
+        Ok(Some(checkpoint))
+    }
+
+    /// Retrieve all checkpoints within an epoch range `[start_epoch, end_epoch]` inclusive.
+    ///
+    /// Returns empty `Vec` if no checkpoints exist in the range. If `start_epoch > end_epoch`,
+    /// returns empty (no error).
+    ///
+    /// **Requirement:** [`CKP-004`](../docs/requirements/domains/checkpoint_storage/specs/CKP-004_get_checkpoints_in_range.md).
+    pub fn get_checkpoints_in_range(
+        &self,
+        start_epoch: u64,
+        end_epoch: u64,
+    ) -> Result<Vec<crate::StoredCheckpoint>, BlockStoreError> {
+        if start_epoch > end_epoch {
+            return Ok(Vec::new());
+        }
+        let cf = self.cf(CF_CHECKPOINTS)?;
+        let start_key = crate::encoding::epoch_key(start_epoch);
+        let mode = IteratorMode::From(&start_key, Direction::Forward);
+        let iter = self.db.iterator_cf(cf, mode);
+        let mut result = Vec::new();
+        for item in iter {
+            let (key_bytes, value) = item?;
+            if key_bytes.len() != 8 {
+                continue;
+            }
+            let key_arr: [u8; 8] = key_bytes.as_ref().try_into().unwrap_or([0; 8]);
+            let epoch = crate::encoding::decode_epoch_key(&key_arr);
+            if epoch > end_epoch {
+                break;
+            }
+            let checkpoint = crate::StoredCheckpoint::decode_bincode(&value)
+                .map_err(|e| BlockStoreError::Serialization(e.to_string()))?;
+            result.push(checkpoint);
+        }
+        Ok(result)
+    }
+
     /// Async batched ingest ([`BLK-008`](../docs/requirements/domains/block_storage/specs/BLK-008.md), [`IMPLEMENTATION_ORDER.md`](../docs/requirements/IMPLEMENTATION_ORDER.md) Phase 5).
     ///
     /// **Channel + batching (NORMATIVE §1–3):** Enqueues into a bounded [`mpsc`] queue; a background task accumulates

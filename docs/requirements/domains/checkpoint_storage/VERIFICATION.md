@@ -2,7 +2,7 @@
 
 | ID | Status | Summary | Verification Approach |
 |----|--------|---------|----------------------|
-| CKP-001 | gap | Store checkpoint via bincode to CF_CHECKPOINTS keyed by big-endian epoch; idempotent overwrite | Unit: round-trip put/get; verify bincode serialization; overwrite existing epoch and verify latest value returned; verify big-endian key encoding |
-| CKP-002 | gap | Get checkpoint by epoch from CF_CHECKPOINTS with bincode deserialization | Unit: retrieve stored checkpoint; verify correct deserialization; missing epoch returns None |
-| CKP-003 | gap | Get latest checkpoint via reverse iterator on CF_CHECKPOINTS | Unit: store multiple checkpoints at different epochs, verify highest epoch returned; empty store returns None; add higher epoch, verify updated result |
-| CKP-004 | gap | Get checkpoints in epoch range via forward iterator seek | Unit: store checkpoints at epochs 5,10,15,20; query range [8,18] returns epochs 10,15; empty range returns empty vec; boundary-inclusive test |
+| CKP-001 | done | Store checkpoint via bincode to CF_CHECKPOINTS keyed by big-endian epoch; idempotent overwrite | `tests/ckp_001_tests.rs` — round-trip, overwrite, multiple epochs. 3 tests. |
+| CKP-002 | done | Get checkpoint by epoch from CF_CHECKPOINTS with bincode deserialization | `tests/ckp_002_tests.rs` — existing, missing, no cross-contamination. 3 tests. |
+| CKP-003 | done | Get latest checkpoint via reverse iterator on CF_CHECKPOINTS | `tests/ckp_003_tests.rs` — none empty, highest epoch, updates after new insert. 3 tests. |
+| CKP-004 | done | Get checkpoints in epoch range via forward iterator seek | `tests/ckp_004_tests.rs` — inclusive range, empty, inverted range, single, gaps. 5 tests. |

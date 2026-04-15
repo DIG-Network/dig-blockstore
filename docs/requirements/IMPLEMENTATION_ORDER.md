@@ -95,10 +95,10 @@ After completing a requirement: write tests, verify they pass, update TRACKING.y
 
 ## Phase 9: Checkpoint Storage
 
-- [ ] CKP-001 — put_checkpoint by epoch (StoredCheckpoint in CF_CHECKPOINTS)
-- [ ] CKP-002 — get_checkpoint by epoch
-- [ ] CKP-003 — get_latest_checkpoint
-- [ ] CKP-004 — get_checkpoints_in_range (epoch range query)
+- [x] CKP-001 — put_checkpoint by epoch (StoredCheckpoint in CF_CHECKPOINTS)
+- [x] CKP-002 — get_checkpoint by epoch
+- [x] CKP-003 — get_latest_checkpoint
+- [x] CKP-004 — get_checkpoints_in_range (epoch range query)
 
 ## Phase 10: Pruning
 

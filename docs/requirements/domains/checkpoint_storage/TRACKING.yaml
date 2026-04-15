@@ -5,20 +5,32 @@ crate: dig-blockstore
 items:
   - id: CKP-001
     title: Store Checkpoint (put_checkpoint)
-    status: gap
+    status: implemented
     spec_ref: "9.1"
+    tests:
+      - tests/ckp_001_tests.rs
+    notes: "bincode serialize to CF_CHECKPOINTS keyed by epoch_key; idempotent overwrite; 3 tests"
 
   - id: CKP-002
     title: Get Checkpoint by Epoch (get_checkpoint)
-    status: gap
+    status: implemented
     spec_ref: "9.2"
+    tests:
+      - tests/ckp_002_tests.rs
+    notes: "epoch_key lookup + bincode deserialize; None for missing; 3 tests"
 
   - id: CKP-003
     title: Get Latest Checkpoint (get_latest_checkpoint)
-    status: gap
+    status: implemented
     spec_ref: "9.2"
+    tests:
+      - tests/ckp_003_tests.rs
+    notes: "Reverse iterator on CF_CHECKPOINTS; highest epoch; 3 tests"
 
   - id: CKP-004
     title: Get Checkpoints in Range (get_checkpoints_in_range)
-    status: gap
+    status: implemented
     spec_ref: "9.2"
+    tests:
+      - tests/ckp_004_tests.rs
+    notes: "Forward iterator seek + scan; inclusive range; handles gaps; 5 tests"
