@@ -87,7 +87,7 @@ After completing a requirement: write tests, verify they pass, update TRACKING.y
 ## Phase 8: Rollback & Reorg
 
 - [x] ROR-001 — rollback_to_height (revert canonical without deleting blocks)
-- [ ] ROR-002 — find_common_ancestor (walk parent hashes up to max_depth)
+- [x] ROR-002 — find_common_ancestor (walk parent hashes up to max_depth)
 - [ ] ROR-003 — apply_reorg (atomic WriteBatch: rollback + set canonical for new chain)
 - [ ] ROR-004 — Fork preservation (non-canonical blocks remain accessible by hash)
 - [x] ROR-005 — Rollback boundary validation (below genesis, above tip)

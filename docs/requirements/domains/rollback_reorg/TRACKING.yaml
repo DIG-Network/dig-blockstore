@@ -14,10 +14,11 @@ items:
   - id: ROR-002
     section: "Rollback & Reorg"
     summary: "Find Common Ancestor"
-    status: gap
+    status: implemented
     spec_ref: "docs/requirements/domains/rollback_reorg/specs/ROR-002.md"
-    tests: []
-    notes: ""
+    tests:
+      - tests/ror_002_tests.rs
+    notes: "parent_hash walk with canonical check at each step; max_depth bounded; 7 tests"
 
   - id: ROR-003
     section: "Rollback & Reorg"

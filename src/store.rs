@@ -1591,6 +1591,54 @@ impl BlockStore {
         Ok(reverted)
     }
 
+    /// Walk the `parent_hash` chain from `hash` backward, returning the first block
+    /// that is the canonical block at its height.
+    ///
+    /// # Algorithm ([`ROR-002`](../docs/requirements/domains/rollback_reorg/specs/ROR-002.md))
+    ///
+    /// For up to `max_depth` steps:
+    /// 1. Load the [`BlockRecord`] for `current_hash` (cache or CF_HEADERS derive).
+    /// 2. Check if `get_hash_by_height(record.height) == current_hash` — if so, this
+    ///    block is canonical and is the common ancestor.
+    /// 3. Otherwise, follow `record.parent_hash` and repeat.
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(Some((hash, height)))` — the first canonical ancestor found.
+    /// - `Ok(None)` — hash not in store, parent chain broken, or `max_depth` exceeded.
+    ///
+    /// # Use case
+    ///
+    /// When a new block arrives whose parent is not the current tip, call this with the
+    /// new block’s parent hash to find where the fork diverged from the canonical chain.
+    /// The result feeds into [`apply_reorg`](Self) (ROR-003) as the `ancestor_height`.
+    ///
+    /// # Read-only
+    ///
+    /// This method does not modify any state. Safe to call concurrently.
+    pub fn find_common_ancestor(
+        &self,
+        hash: &Bytes32,
+        max_depth: u64,
+    ) -> Result<Option<(Bytes32, u64)>, BlockStoreError> {
+        let mut current_hash = *hash;
+        for _ in 0..max_depth {
+            let record = match self.get_record(&current_hash)? {
+                Some(r) => r,
+                None => return Ok(None), // block not in store or chain broken
+            };
+            // Check if this block is canonical at its height
+            if let Some(canonical_hash) = self.get_hash_by_height(record.height)? {
+                if canonical_hash == current_hash {
+                    return Ok(Some((current_hash, record.height)));
+                }
+            }
+            // Walk backwards via parent_hash
+            current_hash = record.parent_hash;
+        }
+        Ok(None) // exceeded max_depth
+    }
+
     /// **[`BLK-009`](../docs/requirements/domains/block_storage/specs/BLK-009.md)** — Persist an [`AttestedBlock`] under the block’s hash key.
     ///
     /// **Key:** [`hash_key`](crate::encoding::hash_key)(`hash`) — raw 32 bytes in [`CF_ATTESTED`] ([`KEY-001`](../docs/requirements/domains/key_encoding/specs/KEY-001_hash_keys.md)), identical key shape to [`CF_BLOCKS`] / [`CF_HEADERS`].
