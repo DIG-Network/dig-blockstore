@@ -89,5 +89,6 @@ items:
 
   - id: BLK-015
     title: Get Records in Range (get_records_in_range)
-    status: gap
+    status: done
     spec_ref: "5.3, 15.3"
+    notes: "BlockStore::get_record_by_height; get_records_in_range; header/get_record path; tests/blk_015_tests.rs"

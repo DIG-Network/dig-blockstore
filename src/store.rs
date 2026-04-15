@@ -61,6 +61,7 @@
 //! - [`BLK-012`](../docs/requirements/domains/block_storage/specs/BLK-012.md) — `stats` aggregate [`StorageStats`](crate::types::StorageStats) snapshot.
 //! - [`BLK-013`](../docs/requirements/domains/block_storage/specs/BLK-013.md) — `flush` / `compact` maintenance on the shared [`rocksdb::DB`].
 //! - [`BLK-014`](../docs/requirements/domains/block_storage/specs/BLK-014.md) — `get_blocks_in_range` and sync `get_block_by_height` over [`CF_CANONICAL`].
+//! - [`BLK-015`](../docs/requirements/domains/block_storage/specs/BLK-015.md) — `get_records_in_range` / `get_record_by_height` (header-derived, no block bodies).
 //! - [`SER-001`](../docs/requirements/domains/serialization/specs/SER-001.md) — bincode + zstd block serialization.
 //! - [`SER-002`](../docs/requirements/domains/serialization/specs/SER-002.md) — bincode-only header serialization.
 //! - [`SER-005`](../docs/requirements/domains/serialization/specs/SER-005.md) — dictionary training and persistence.
@@ -785,6 +786,53 @@ impl BlockStore {
             }
         }
         Ok(blocks)
+    }
+
+    /// Look up the canonical [`BlockRecord`] at `height` ([`BLK-015`](../docs/requirements/domains/block_storage/specs/BLK-015.md), [`BLK-004`](../docs/requirements/domains/block_storage/specs/BLK-004.md)).
+    ///
+    /// **Resolution:** Same [`CF_CANONICAL`] → [`Bytes32`] step as [`Self::get_block_by_height`], then [`Self::get_record`]
+    /// so misses load **bincode headers only** from [`CF_HEADERS`] ([`SER-002`](../docs/requirements/domains/serialization/specs/SER-002.md)) — no zstd frame read from [`CF_BLOCKS`].
+    ///
+    /// **Returns:** `Ok(None)` when the height index is missing or when neither [`CF_HEADERS`] nor caches can supply a header.
+    pub fn get_record_by_height(
+        &self,
+        height: u64,
+    ) -> Result<Option<BlockRecord>, BlockStoreError> {
+        let cf = self.cf(CF_CANONICAL)?;
+        let hk = height_key(height);
+        let Some(hash_bytes) = self.db.get_cf(cf, hk.as_slice())? else {
+            return Ok(None);
+        };
+        let arr: [u8; 32] = hash_bytes.as_slice().try_into().map_err(|_| {
+            BlockStoreError::Serialization(
+                "get_record_by_height: CF_CANONICAL value must be exactly 32 bytes".into(),
+            )
+        })?;
+        let hash = Bytes32::new(arr);
+        self.get_record(&hash)
+    }
+
+    /// **[`BLK-015`](../docs/requirements/domains/block_storage/specs/BLK-015.md)** — Materialize canonical [`BlockRecord`]s for `[start_height, end_height]` inclusive ([`NORMATIVE` BLK-015](../docs/requirements/domains/block_storage/NORMATIVE.md#blk-015-get-records-in-range-get_records_in_range)).
+    ///
+    /// **Semantics:** Matches [`Self::get_blocks_in_range`] ordering and gap rules ([`BLK-014`](../docs/requirements/domains/block_storage/specs/BLK-014.md)), but each row comes from [`Self::get_record_by_height`] so operators avoid zstd decompression on the hot path ([`BLK-015`](../docs/requirements/domains/block_storage/specs/BLK-015.md) § Specification).
+    ///
+    /// **Cache interaction:** [`Self::get_record`] may insert derived rows into [`Self::record_cache`] / [`Self::header_cache`];
+    /// repeated scans therefore become cheaper, mirroring single-hash lookups ([`CAC-003`](../docs/requirements/domains/caching/specs/CAC-003.md) precursor).
+    pub fn get_records_in_range(
+        &self,
+        start_height: u64,
+        end_height: u64,
+    ) -> Result<Vec<BlockRecord>, BlockStoreError> {
+        if start_height > end_height {
+            return Ok(Vec::new());
+        }
+        let mut records = Vec::with_capacity((end_height - start_height + 1) as usize);
+        for height in start_height..=end_height {
+            if let Some(record) = self.get_record_by_height(height)? {
+                records.push(record);
+            }
+        }
+        Ok(records)
     }
 
     /// How many times [`Self::get_block`] reached RocksDB [`CF_BLOCKS`] after a cache miss (includes `Ok(None)` probes).
