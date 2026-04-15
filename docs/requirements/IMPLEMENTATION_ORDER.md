@@ -43,7 +43,7 @@ After completing a requirement: write tests, verify they pass, update TRACKING.y
 
 - [x] SER-001 — Block serialization with zstd dictionary compression
 - [x] SER-002 — Header serialization (bincode, uncompressed)
-- [ ] SER-003 — Wire-format interop (chia-traits Streamable export/import)
+- [x] SER-003 — Wire-format interop (chia-traits Streamable export/import)
 - [ ] SER-004 — Round-trip guarantees (bincode, zstd, hash invariance)
 - [ ] SER-005 — Dictionary training and management (train on 1000 blocks, persist, fallback)
 

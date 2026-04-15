@@ -70,6 +70,7 @@ const REQUIRED_REL_PATHS: &[&str] = &[
     "compression.rs",
     "pipeline.rs",
     "snapshot.rs",
+    "wire.rs",
     "types/mod.rs",
     "types/block_record.rs",
     "types/stored_checkpoint.rs",

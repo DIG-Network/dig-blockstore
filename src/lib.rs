@@ -37,6 +37,8 @@ pub mod pipeline;
 pub mod snapshot;
 pub mod store;
 pub mod types;
+/// Chia [`Streamable`] wire serialization for [`dig_block::L2Block`] ([`SER-003`](../docs/requirements/domains/serialization/specs/SER-003.md)).
+pub mod wire;
 
 // --- STR-003: flat public API (`use dig_blockstore::{…}`) ---
 pub use config::BlockStoreConfig;
@@ -56,6 +58,7 @@ pub use error::{
 };
 pub use store::BlockStore;
 pub use types::{BlockRecord, ChainTip, StorageStats, StoredCheckpoint};
+pub use wire::{block_from_wire_bytes, block_to_wire_bytes};
 
 use dig_block::L2BlockHeader;
 use dig_constants::NetworkConstants;

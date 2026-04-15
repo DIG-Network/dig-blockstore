@@ -17,8 +17,9 @@ items:
 
   - id: SER-003
     title: Wire-Format Interop
-    status: gap
+    status: done
     spec_ref: "13.3"
+    notes: "dig_block::{L2Block,L2BlockHeader} derive Streamable; dig_blockstore::wire::{block_to_wire_bytes,block_from_wire_bytes}; tests/ser_003_tests.rs"
 
   - id: SER-004
     title: Round-Trip Guarantees
