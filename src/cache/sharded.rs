@@ -69,6 +69,19 @@ impl<V: Clone> ShardedLruCache<V> {
         guard.put(key, value);
     }
 
+    /// Membership probe **without** LRU promotion ([`LruCache::peek`](lru::LruCache::peek)).
+    ///
+    /// **Rationale:** [`Self::get_clone`] must take a write lock because [`LruCache::get`] mutates recency; existence-only
+    /// checks for [`BLK-011`](../../docs/requirements/domains/block_storage/specs/BLK-011.md) should not reorder hot entries
+    /// when answering “is this hash cached?”.
+    #[inline]
+    #[must_use]
+    pub fn contains(&self, key: &Bytes32) -> bool {
+        let i = self.shard_index(key);
+        let guard = self.shards[i].read();
+        guard.peek(key).is_some()
+    }
+
     /// Drop one entry — tests simulate eviction; future invalidation / PRN hooks may reuse this.
     pub fn remove(&self, key: &Bytes32) {
         let i = self.shard_index(key);

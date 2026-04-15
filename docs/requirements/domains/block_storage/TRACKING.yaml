@@ -65,8 +65,9 @@ items:
 
   - id: BLK-011
     title: Has Block (has_block)
-    status: gap
+    status: done
     spec_ref: "15.2"
+    notes: "BlockStore::has_block; ShardedLruCache::contains (peek, no LRU promote); CF_HEADERS then CF_BLOCKS with hash_key; no cf_blocks_physical_get_count; tests/blk_011_tests.rs"
 
   - id: BLK-012
     title: Storage Statistics (stats)

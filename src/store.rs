@@ -57,6 +57,7 @@
 //! - [`BLK-008`](../docs/requirements/domains/block_storage/specs/BLK-008.md) — async write pipeline (`put_pipelined`, batched `WriteBatch`).
 //! - [`BLK-009`](../docs/requirements/domains/block_storage/specs/BLK-009.md) — `put_attestation` / `get_attestation` on [`CF_ATTESTED`].
 //! - [`BLK-010`](../docs/requirements/domains/block_storage/specs/BLK-010.md) — `update_status` on in-memory [`BlockRecord`] only.
+//! - [`BLK-011`](../docs/requirements/domains/block_storage/specs/BLK-011.md) — `has_block` lightweight existence by hash.
 //! - [`SER-001`](../docs/requirements/domains/serialization/specs/SER-001.md) — bincode + zstd block serialization.
 //! - [`SER-002`](../docs/requirements/domains/serialization/specs/SER-002.md) — bincode-only header serialization.
 //! - [`SER-005`](../docs/requirements/domains/serialization/specs/SER-005.md) — dictionary training and persistence.
@@ -537,6 +538,28 @@ impl BlockStore {
         self.block_cache.insert(*hash, block.clone());
         self.header_cache.insert(*hash, block.header.clone());
         Ok(Some(block))
+    }
+
+    /// **[`BLK-011`](../docs/requirements/domains/block_storage/specs/BLK-011.md)** — Whether any persisted row exists for `hash` **without** decoding zstd or bincode ([`NORMATIVE.md` § BLK-011](../docs/requirements/domains/block_storage/NORMATIVE.md#blk-011-has-block-has_block)).
+    ///
+    /// **Cache first (AC §2):** [`Self::block_cache`] and [`Self::header_cache`] are consulted via [`ShardedLruCache::contains`](crate::cache::sharded::ShardedLruCache::contains) ([`LruCache::peek`](lru::LruCache::peek) — no LRU promotion).
+    ///
+    /// **RocksDB (AC §1):** If both caches miss, probe [`CF_HEADERS`] then [`CF_BLOCKS`] using [`hash_key`](crate::encoding::hash_key) (same key layout as [`Self::put_block`]). The second probe covers edge cases where only a body row exists; normal [`Self::put_block`] writes both families together ([`BLK-001`](../docs/requirements/domains/block_storage/specs/BLK-001.md)).
+    ///
+    /// **No deserialize / decompress (AC §3):** Uses only [`DB::get_cf`](rocksdb::DB::get_cf) presence checks — returned bytes are discarded without calling [`Self::deserialize_block`] or [`Self::deserialize_header`].
+    ///
+    /// **Instrumentation:** This path does **not** increment [`Self::cf_blocks_physical_get_count`] (that counter remains exclusive to [`Self::get_block`]) so tests can prove cache-fast paths avoid the heavy read API ([`BLK-002`](../docs/requirements/domains/block_storage/specs/BLK-002.md) counter semantics).
+    pub fn has_block(&self, hash: &Bytes32) -> Result<bool, BlockStoreError> {
+        if self.block_cache.contains(hash) || self.header_cache.contains(hash) {
+            return Ok(true);
+        }
+        let key = hash_key(hash);
+        let cf_h = self.cf(CF_HEADERS)?;
+        if self.db.get_cf(cf_h, key.as_slice())?.is_some() {
+            return Ok(true);
+        }
+        let cf_b = self.cf(CF_BLOCKS)?;
+        Ok(self.db.get_cf(cf_b, key.as_slice())?.is_some())
     }
 
     /// Batch-fetch blocks by hash ([`BLK-005`](../docs/requirements/domains/block_storage/specs/BLK-005.md)).
