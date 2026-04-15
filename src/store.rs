@@ -1,12 +1,63 @@
 //! `BlockStore` — RocksDB-backed persistent block and chain state.
 //!
-//! **Architecture**
-//! - Owns column families in [`crate::constants`] ([`STR-004`](../docs/requirements/domains/crate_structure/specs/STR-004.md)).
-//! - Block bodies: `bincode` + zstd ([`SER-001`](../docs/requirements/domains/serialization/specs/SER-001.md)); headers: `bincode` only ([`SER-002`](../docs/requirements/domains/serialization/specs/SER-002.md)).
-//! - Tip / genesis metadata: [`crate::constants::META_TIP`], [`crate::constants::META_GENESIS_HASH`].
-//! - [`BlockRecord`](crate::BlockRecord) cache: in-memory only ([`BLK-001`](../docs/requirements/domains/block_storage/specs/BLK-001.md), [`BLK-004`](../docs/requirements/domains/block_storage/specs/BLK-004.md), [`TYP-004`](../docs/requirements/domains/storage_types/specs/TYP-004.md)).
-//! - Block body cache: [`crate::cache::sharded::ShardedBlockCache`] ([`BLK-002`](../docs/requirements/domains/block_storage/specs/BLK-002.md), [`BLK-005`](../docs/requirements/domains/block_storage/specs/BLK-005.md) batch reads, [`CAC-001`](../docs/requirements/domains/caching/specs/CAC-001_sharded_block_cache.md)).
-//! - Header cache: [`crate::cache::sharded::ShardedHeaderCache`] ([`BLK-003`](../docs/requirements/domains/block_storage/specs/BLK-003.md), [`CAC-002`](../docs/requirements/domains/caching/specs/CAC-002_sharded_header_cache.md)).
+//! # Architecture
+//!
+//! This module is the primary entry point for all block persistence in the DIG L2
+//! network. It mirrors the storage patterns established by the **Chia blockchain**'s
+//! `BlockStore` in `chia-blockchain/chia/consensus/block_store.py`, adapted for Rust
+//! and RocksDB instead of Python/SQLite:
+//!
+//! | Chia Python pattern | DIG Rust equivalent |
+//! |---------------------|---------------------|
+//! | `full_blocks` SQLite table | [`CF_BLOCKS`](crate::CF_BLOCKS) column family (zstd-compressed bincode) |
+//! | `block_records` SQLite table | In-memory [`BlockRecord`](crate::BlockRecord) cache (never persisted; [`TYP-004`]) |
+//! | `block_cache: LRUCache[bytes32, FullBlock]` | [`ShardedBlockCache`](crate::cache::sharded::ShardedBlockCache) (sharded LRU, [`CAC-001`]) |
+//! | `current_peak` single-row | [`META_TIP`](crate::META_TIP) in [`CF_METADATA`](crate::CF_METADATA) (40-byte [`ChainTip`]) |
+//! | `INSERT OR IGNORE` idempotency | [`put_block`](BlockStore::put_block) existence check → `Ok(false)` |
+//! | `BlockHeightMap` bytearray | [`CF_CANONICAL`](crate::CF_CANONICAL) height→hash index (future mmap in [`crate::canonical`]) |
+//!
+//! # Column family ownership
+//!
+//! - [`CF_BLOCKS`]: Compressed full block bodies keyed by header hash ([`SER-001`]).
+//! - [`CF_HEADERS`]: Uncompressed bincode headers keyed by header hash ([`SER-002`]).
+//! - [`CF_CANONICAL`]: Dense height→hash index for the canonical chain ([`CAN-001`]).
+//! - [`CF_METADATA`]: Tip, genesis hash, schema version, zstd dictionary ([`TYP-002`]).
+//! - [`CF_ATTESTED`], [`CF_CHECKPOINTS`]: Reserved for future attestation/checkpoint storage.
+//!
+//! # Three-tier read path
+//!
+//! Every `get_*` method follows a consistent tiered lookup:
+//!
+//! 1. **In-memory cache** — sharded LRU for blocks/headers, `HashMap` for records.
+//!    Cache hits return clones with zero RocksDB I/O.
+//! 2. **RocksDB column family** — on miss, raw bytes are fetched, deserialized, and
+//!    inserted back into the cache (read-through).
+//! 3. **Absent** — `Ok(None)` when the key does not exist at any tier.
+//!
+//! # Concurrency model
+//!
+//! `BlockStore` uses `&self` for all public methods (no `&mut self`). Interior
+//! mutability is provided by:
+//! - [`parking_lot::RwLock`] for tip and zstd dictionary (read-heavy, rare writes).
+//! - [`parking_lot::Mutex`] for the record cache (short critical sections).
+//! - [`std::sync::atomic::AtomicUsize`] for instrumentation counters (lock-free).
+//! - [`Arc<DB>`] for the RocksDB handle (thread-safe by design).
+//!
+//! # Requirements trace
+//!
+//! - [`STR-004`](../docs/requirements/domains/crate_structure/specs/STR-004.md) — constructors and lifecycle.
+//! - [`BLK-001`](../docs/requirements/domains/block_storage/specs/BLK-001.md) — `put_block` / `put`.
+//! - [`BLK-002`](../docs/requirements/domains/block_storage/specs/BLK-002.md) — `get_block` with block cache.
+//! - [`BLK-003`](../docs/requirements/domains/block_storage/specs/BLK-003.md) — `get_header` with header cache.
+//! - [`BLK-004`](../docs/requirements/domains/block_storage/specs/BLK-004.md) — `get_record` with layered caching.
+//! - [`BLK-005`](../docs/requirements/domains/block_storage/specs/BLK-005.md) — `get_blocks_by_hash` batch retrieval.
+//! - [`BLK-006`](../docs/requirements/domains/block_storage/specs/BLK-006.md) — `stream_blocks_in_range` sequential readahead.
+//! - [`SER-001`](../docs/requirements/domains/serialization/specs/SER-001.md) — bincode + zstd block serialization.
+//! - [`SER-002`](../docs/requirements/domains/serialization/specs/SER-002.md) — bincode-only header serialization.
+//! - [`SER-005`](../docs/requirements/domains/serialization/specs/SER-005.md) — dictionary training and persistence.
+//! - [`CAC-001`](../docs/requirements/domains/caching/specs/CAC-001_sharded_block_cache.md) — sharded block LRU.
+//! - [`CAC-002`](../docs/requirements/domains/caching/specs/CAC-002_sharded_header_cache.md) — sharded header LRU.
+//! - [`CAC-006`](../docs/requirements/domains/caching/specs/CAC-006_cache_warming_on_startup.md) — startup warming.
 //!
 //! **Spec:** `docs/resources/SPEC.md` §15.1 (constructors), §16 (crate boundary).
 
@@ -19,7 +70,7 @@ use chia_protocol::Bytes32;
 use dig_block::{BlockStatus, L2Block, L2BlockHeader};
 use parking_lot::{Mutex, RwLock};
 use rand::seq::SliceRandom;
-use rocksdb::{IteratorMode, Options, WriteBatch, DB};
+use rocksdb::{ColumnFamily, Direction, IteratorMode, Options, ReadOptions, WriteBatch, DB};
 
 use crate::cache::sharded::{ShardedBlockCache, ShardedHeaderCache};
 use crate::cf_options;
@@ -27,7 +78,7 @@ use crate::constants::{
     CF_BLOCKS, CF_CANONICAL, CF_HEADERS, CF_METADATA, DICT_TARGET_SIZE, DICT_TRAINING_THRESHOLD,
     META_GENESIS_HASH, META_TIP, META_ZSTD_DICT,
 };
-use crate::encoding::{hash_key, height_key};
+use crate::encoding::{decode_height_key, hash_key, height_key};
 use crate::error::{
     BlockStoreError, ERR_INIT_GENESIS_ALREADY_INITIALIZED, ERR_INIT_GENESIS_READ_ONLY,
     ERR_MUTATION_READ_ONLY, ERR_OPEN_READONLY_PATH_MISSING_PREFIX,
@@ -36,10 +87,39 @@ use crate::types::{BlockRecord, ChainTip};
 use crate::BlockStoreConfig;
 
 /// Primary handle for all block persistence APIs.
+///
+/// # Chia blockchain analogy
+///
+/// This struct corresponds to `BlockStore` in `chia-blockchain/chia/consensus/block_store.py`.
+/// Where Chia uses a single SQLite `full_blocks` table with Python LRU caches, DIG uses
+/// RocksDB column families with Rust sharded LRU caches for higher throughput under
+/// concurrent access. The API surface mirrors Chia's: `add_full_block` → [`put_block`](Self::put_block),
+/// `get_full_block` → [`get_block`](Self::get_block), `get_block_record` → [`get_record`](Self::get_record).
+///
+/// # Ownership
+///
+/// Holds an `Arc<DB>` so it can be shared across threads (e.g., sync worker + RPC handler).
+/// All caches use interior mutability (`RwLock`, `Mutex`, atomics) so the public API is `&self`.
+///
+/// # Construction
+///
+/// Use [`BlockStore::open`] for read-write access or [`BlockStore::open_readonly`] for read-only
+/// access to an existing database. After construction, call [`BlockStore::init_genesis`] once
+/// to initialize a new chain.
 pub struct BlockStore {
+    /// RocksDB handle shared across all operations. Thread-safe via RocksDB's internal locking.
+    /// All six column families ([`TYP-001`]) are created at open time.
     db: Arc<DB>,
+    /// When `true`, all mutation APIs (`put_block`, `init_genesis`) return
+    /// [`BlockStoreError::Serialization`] with [`ERR_MUTATION_READ_ONLY`].
+    /// Set by [`Self::open_readonly`]; cannot be toggled after construction.
     read_only: bool,
+    /// In-memory copy of the chain tip from [`META_TIP`] in [`CF_METADATA`].
+    /// Updated atomically after [`init_genesis`](Self::init_genesis) and future tip-advance APIs.
+    /// Reads use [`RwLock::read`] (very cheap with parking_lot); writes are rare (new blocks).
     tip: RwLock<Option<ChainTip>>,
+    /// Count of blocks verified present during cache warming at last [`Self::open`].
+    /// Exposed via [`Self::warm_blocks_loaded_count`] for startup diagnostics.
     warm_blocks_loaded: AtomicUsize,
     /// Zstd level for [`Self::serialize_block`] / plain fallback ([`SER-001`](../docs/requirements/domains/serialization/specs/SER-001.md) §6).
     compression_level: i32,
@@ -72,6 +152,14 @@ pub struct BlockStore {
     /// **Semantics:** Increments by **at most one per `get_blocks_by_hash` call** that performs RocksDB I/O (all misses
     /// share one `multi_get_cf` round-trip). Stays at zero when every hash hits [`Self::block_cache`] or when `hashes` is empty.
     cf_blocks_multi_get_batches: AtomicUsize,
+    /// Count of [`DB::get_cf_opt`](rocksdb::DB::get_cf_opt) calls against [`CF_BLOCKS`] from [`StreamBlocksInRange`]
+    /// ([`BLK-006`](../docs/requirements/domains/block_storage/specs/BLK-006.md)) after a block-cache miss.
+    ///
+    /// **Rationale:** Distinct from [`Self::cf_blocks_physical_get_count`] ([`get_block`](Self::get_block)) so tests can
+    /// prove cache hits in a streamed range skip redundant block-blob reads ([`tests/blk_006_tests.rs`]).
+    cf_blocks_stream_physical_gets: AtomicUsize,
+    /// Copy of [`BlockStoreConfig::readahead_size`](crate::BlockStoreConfig::readahead_size) at open time ([`BLK-006`](../docs/requirements/domains/block_storage/specs/BLK-006.md) AC §4).
+    readahead_size: usize,
     /// Sharded LRU of [`L2BlockHeader`] values ([`BLK-003`](../docs/requirements/domains/block_storage/specs/BLK-003.md)).
     ///
     /// **Separate** from [`Self::block_cache`] per BLK-003 implementation notes (tunables: [`BlockStoreConfig::header_cache_capacity`](crate::BlockStoreConfig::header_cache_capacity)).
@@ -110,6 +198,7 @@ impl BlockStore {
         } else {
             0
         };
+        let readahead_size = config.readahead_size;
         let shards = config.cache_shards.max(1);
         let block_cache = Arc::new(ShardedBlockCache::new(config.block_cache_capacity, shards));
         let header_cache = Arc::new(ShardedHeaderCache::new(
@@ -129,6 +218,8 @@ impl BlockStore {
             block_cache,
             cf_blocks_physical_gets: AtomicUsize::new(0),
             cf_blocks_multi_get_batches: AtomicUsize::new(0),
+            cf_blocks_stream_physical_gets: AtomicUsize::new(0),
+            readahead_size,
             header_cache,
             cf_headers_physical_gets: AtomicUsize::new(0),
         })
@@ -160,6 +251,7 @@ impl BlockStore {
         let zstd_dict =
             resolve_zstd_dictionary(&db, use_compression_dict, zstd_dictionary_override)?;
         let tip = load_tip(&db)?;
+        let readahead_size = readonly_cfg.readahead_size;
         let shards = readonly_cfg.cache_shards.max(1);
         let block_cache = Arc::new(ShardedBlockCache::new(
             readonly_cfg.block_cache_capacity,
@@ -182,6 +274,8 @@ impl BlockStore {
             block_cache,
             cf_blocks_physical_gets: AtomicUsize::new(0),
             cf_blocks_multi_get_batches: AtomicUsize::new(0),
+            cf_blocks_stream_physical_gets: AtomicUsize::new(0),
+            readahead_size,
             header_cache,
             cf_headers_physical_gets: AtomicUsize::new(0),
         })
@@ -310,17 +404,37 @@ impl BlockStore {
         bincode::deserialize(&raw).map_err(|e| BlockStoreError::Serialization(e.to_string()))
     }
 
+    /// Decompress a raw zstd frame from [`CF_BLOCKS`] back to bincode bytes.
+    ///
+    /// # Fallback strategy ([`SER-005`])
+    ///
+    /// When dictionary mode is active, this method tries dictionary decompression first.
+    /// If that fails (because the payload was written *before* the dictionary was trained),
+    /// it falls back to plain [`zstd::decode_all`]. This two-phase approach ensures all
+    /// historical blocks remain readable after dictionary training—a critical invariant
+    /// since DIG does not re-encode existing blocks when a dictionary is installed.
+    ///
+    /// # Decompression bomb protection
+    ///
+    /// [`zstd::bulk::Decompressor::decompress`] accepts `max_decompressed_block_bytes` as
+    /// an upper bound on output size, preventing malicious payloads from exhausting memory.
+    /// The plain fallback path ([`zstd::decode_all`]) does not have this cap; future work
+    /// may wrap it similarly.
     fn decompress_block_payload(&self, compressed: &[u8]) -> std::io::Result<Vec<u8>> {
         if self.use_compression_dict {
             if let Some(dict) = self.zstd_dict.read().as_ref() {
+                // Phase 1: attempt dictionary-aware decompression (post-training payloads).
                 let mut decompressor = zstd::bulk::Decompressor::with_dictionary(dict.as_slice())?;
                 return match decompressor.decompress(compressed, self.max_decompressed_block_bytes)
                 {
                     Ok(bytes) => Ok(bytes),
+                    // Phase 2: dictionary decompression failed—payload is likely a pre-training
+                    // plain zstd frame. Fall back to standard decoding.
                     Err(_) => zstd::decode_all(compressed),
                 };
             }
         }
+        // No dictionary configured or available: standard zstd decompression.
         zstd::decode_all(compressed)
     }
 
@@ -419,6 +533,103 @@ impl BlockStore {
     #[inline]
     pub fn cf_blocks_multi_get_batch_count(&self) -> u64 {
         self.cf_blocks_multi_get_batches.load(Ordering::Relaxed) as u64
+    }
+
+    /// RocksDB readahead hint (bytes) copied from [`BlockStoreConfig::readahead_size`](crate::BlockStoreConfig::readahead_size) at open ([`BLK-006`](../docs/requirements/domains/block_storage/specs/BLK-006.md) AC §4).
+    #[must_use]
+    pub fn readahead_size(&self) -> usize {
+        self.readahead_size
+    }
+
+    /// How many times [`StreamBlocksInRange`] issued [`DB::get_cf_opt`](rocksdb::DB::get_cf_opt) against [`CF_BLOCKS`]
+    /// after a block-cache miss while streaming ([`BLK-006`](../docs/requirements/domains/block_storage/specs/BLK-006.md); [`tests/blk_006_tests.rs`]).
+    #[must_use]
+    pub fn cf_blocks_stream_physical_get_count(&self) -> u64 {
+        self.cf_blocks_stream_physical_gets.load(Ordering::Relaxed) as u64
+    }
+
+    /// Build [`ReadOptions`] for sequential [`CF_BLOCKS`] reads inside [`StreamBlocksInRange`] ([`BLK-006`](../docs/requirements/domains/block_storage/specs/BLK-006.md) AC §3).
+    fn blocks_stream_read_options(&self) -> ReadOptions {
+        let mut o = ReadOptions::default();
+        o.set_readahead_size(self.readahead_size);
+        o
+    }
+
+    /// Stream canonical blocks from height `start` through `end` inclusive ([`BLK-006`](../docs/requirements/domains/block_storage/specs/BLK-006.md)).
+    ///
+    /// **Phase 1 — canonical walk:** [`DB::iterator_cf_opt`](rocksdb::DB::iterator_cf_opt) over [`CF_CANONICAL`] with
+    /// [`ReadOptions::set_readahead_size`](rocksdb::ReadOptions::set_readahead_size) and iterate bounds
+    /// ([`KEY-002`](../docs/requirements/domains/key_encoding/specs/KEY-002_height_keys.md) big-endian order).
+    ///
+    /// **Phase 2 — lazy bodies:** The returned [`StreamBlocksInRange`] walks the captured `(height, hash)` slice and,
+    /// for each entry, serves [`ShardedBlockCache`](crate::cache::sharded::ShardedBlockCache) hits without RocksDB, or
+    /// [`DB::get_cf_opt`](rocksdb::DB::get_cf_opt) on [`CF_BLOCKS`] with the same readahead hint (separate [`ReadOptions`]
+    /// instance so canonical and block reads each carry the configured hint).
+    ///
+    /// **Why two phases:** A live RocksDB iterator over [`CF_CANONICAL`] cannot coexist with mutable/immutable borrows
+    /// of [`Self::block_cache`] / decompressors on every `Iterator::next` without self-referential structs; materializing
+    /// the height→hash list preserves **readahead on the canonical scan** while keeping the public API safe and `'static`-free.
+    ///
+    /// **Errors:** Missing [`CF_BLOCKS`] row for a canonical hash yields [`BlockStoreError::BlockNotFound`] from the stream
+    /// ([`BLK-006`](../docs/requirements/domains/block_storage/specs/BLK-006.md) AC §6). Malformed canonical keys/values map to [`BlockStoreError::Serialization`].
+    ///
+    /// **Empty / inverted range:** If `start > end`, returns an iterator that yields immediately without I/O.
+    pub fn stream_blocks_in_range(
+        &self,
+        start: u64,
+        end: u64,
+    ) -> Result<StreamBlocksInRange<'_>, BlockStoreError> {
+        let cf_blocks = self.cf(CF_BLOCKS)?;
+        if start > end {
+            return Ok(StreamBlocksInRange {
+                store: self,
+                pairs: Vec::new(),
+                idx: 0,
+                read_opts: self.blocks_stream_read_options(),
+                cf_blocks,
+            });
+        }
+        let cf_canon = self.cf(CF_CANONICAL)?;
+        let mut ro_canon = ReadOptions::default();
+        ro_canon.set_readahead_size(self.readahead_size);
+        ro_canon.set_iterate_lower_bound(height_key(start).to_vec());
+        if end < u64::MAX {
+            ro_canon.set_iterate_upper_bound(height_key(end.saturating_add(1)).to_vec());
+        }
+        let iter = self.db.iterator_cf_opt(
+            cf_canon,
+            ro_canon,
+            IteratorMode::From(height_key(start).as_slice(), Direction::Forward),
+        );
+        let mut pairs = Vec::new();
+        for item in iter {
+            let (k, v) = item?;
+            let karr: [u8; 8] = k.as_ref().try_into().map_err(|_| {
+                BlockStoreError::Serialization(
+                    "stream_blocks_in_range: CF_CANONICAL key must be exactly 8 bytes".into(),
+                )
+            })?;
+            let height = decode_height_key(&karr);
+            if height > end {
+                break;
+            }
+            if height < start {
+                continue;
+            }
+            let varr: [u8; 32] = v.as_ref().try_into().map_err(|_| {
+                BlockStoreError::Serialization(
+                    "stream_blocks_in_range: CF_CANONICAL value must be exactly 32 bytes".into(),
+                )
+            })?;
+            pairs.push((height, Bytes32::new(varr)));
+        }
+        Ok(StreamBlocksInRange {
+            store: self,
+            pairs,
+            idx: 0,
+            read_opts: self.blocks_stream_read_options(),
+            cf_blocks,
+        })
     }
 
     /// Retrieve a block header by hash ([`BLK-003`](../docs/requirements/domains/block_storage/specs/BLK-003.md)).
@@ -655,6 +866,12 @@ impl BlockStore {
         Ok(())
     }
 
+    /// Resolve a column family handle by name, or error if the DB was not opened with it.
+    ///
+    /// This is a thin wrapper around [`DB::cf_handle`](rocksdb::DB::cf_handle) that converts
+    /// the `Option<&ColumnFamily>` to our error type. In practice this should never fail
+    /// because [`BlockStore::open`] creates all six families via [`cf_options::column_family_descriptors`],
+    /// but defensive coding prevents silent `None` dereferences if the CF list drifts.
     fn cf(&self, name: &'static str) -> Result<&rocksdb::ColumnFamily, BlockStoreError> {
         self.db
             .cf_handle(name)
@@ -662,6 +879,74 @@ impl BlockStore {
     }
 }
 
+/// Lazy iterator over canonical block bodies for a closed height range ([`BLK-006`](../docs/requirements/domains/block_storage/specs/BLK-006.md)).
+///
+/// Constructed only via [`BlockStore::stream_blocks_in_range`]. Holds a precomputed `(height, hash)` list from a
+/// readahead-backed scan of [`CF_CANONICAL`], then loads [`CF_BLOCKS`] rows on demand so callers can stop early without
+/// decompressing the remainder ([`BLK-006.md`](../docs/requirements/domains/block_storage/specs/BLK-006.md) implementation notes).
+///
+/// **Invariants:** Heights in `pairs` are strictly ascending (RocksDB canonical ordering). Each successful item matches
+/// the canonical hash at that height; [`L2Block::height`](dig_block::L2Block::height) should equal the stored height
+/// when the database is consistent ([`BLK-001`](../docs/requirements/domains/block_storage/specs/BLK-001.md) write path).
+pub struct StreamBlocksInRange<'a> {
+    store: &'a BlockStore,
+    pairs: Vec<(u64, Bytes32)>,
+    idx: usize,
+    read_opts: ReadOptions,
+    cf_blocks: &'a ColumnFamily,
+}
+
+impl<'a> Iterator for StreamBlocksInRange<'a> {
+    type Item = Result<L2Block, BlockStoreError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.idx >= self.pairs.len() {
+            return None;
+        }
+        let (_expected_height, hash) = self.pairs[self.idx];
+        self.idx += 1;
+        if let Some(block) = self.store.block_cache.get_clone(&hash) {
+            return Some(Ok(block));
+        }
+        self.store
+            .cf_blocks_stream_physical_gets
+            .fetch_add(1, Ordering::Relaxed);
+        let raw_opt = match self.store.db.get_cf_opt(
+            self.cf_blocks,
+            hash_key(&hash).as_slice(),
+            &self.read_opts,
+        ) {
+            Ok(o) => o,
+            Err(e) => return Some(Err(e.into())),
+        };
+        let Some(raw) = raw_opt else {
+            return Some(Err(BlockStoreError::BlockNotFound(hash)));
+        };
+        match self.store.deserialize_block(&raw) {
+            Ok(block) => {
+                self.store.block_cache.insert(hash, block.clone());
+                self.store.header_cache.insert(hash, block.header.clone());
+                Some(Ok(block))
+            }
+            Err(e) => Some(Err(e)),
+        }
+    }
+}
+
+/// Determine the initial zstd dictionary for a freshly opened store.
+///
+/// # Priority order
+///
+/// 1. **Config override** (`zstd_dictionary_override`) — used in tests ([`SER-001`] / [`SER-005`])
+///    to inject a pre-trained dictionary without persisting it in [`META_ZSTD_DICT`].
+///    Empty override bytes are treated as "no dictionary" (returns `None`).
+/// 2. **Persisted metadata** — calls [`load_zstd_dict_from_db`] to check [`CF_METADATA`]
+///    for a non-empty [`META_ZSTD_DICT`] row written by [`BlockStore::train_dictionary`].
+/// 3. **None** — no dictionary available yet; compression falls through to plain zstd.
+///
+/// # Called by
+///
+/// [`BlockStore::open`] and [`BlockStore::open_readonly`] during construction.
 fn resolve_zstd_dictionary(
     db: &DB,
     use_compression_dict: bool,
@@ -677,6 +962,19 @@ fn resolve_zstd_dictionary(
     load_zstd_dict_from_db(db, use_compression_dict)
 }
 
+/// Load the trained zstd dictionary from [`CF_METADATA`] / [`META_ZSTD_DICT`].
+///
+/// Returns `None` when:
+/// - `use_compression_dict` is `false` (feature disabled in config).
+/// - The [`META_ZSTD_DICT`] key does not exist (no training has occurred).
+/// - The stored blob is empty (edge case: metadata key exists but value is zero-length).
+///
+/// The returned `Arc<Vec<u8>>` is shared between the [`BlockStore`] field `zstd_dict`
+/// and all compress/decompress operations, avoiding per-call copies of the ~100 KB dictionary.
+///
+/// # Called by
+///
+/// [`resolve_zstd_dictionary`] (at open time) and [`BlockStore::init_dictionary`] (runtime reload).
 fn load_zstd_dict_from_db(
     db: &DB,
     use_compression_dict: bool,
@@ -696,6 +994,22 @@ fn load_zstd_dict_from_db(
     Ok(Some(Arc::new(blob)))
 }
 
+/// Load the current chain tip from [`CF_METADATA`] / [`META_TIP`].
+///
+/// The tip is a 40-byte value encoding `hash (32 bytes) || height (8 bytes LE)`,
+/// decoded via [`ChainTip::from_bytes`]. Returns `None` for a brand-new database
+/// that has not yet had [`BlockStore::init_genesis`] called.
+///
+/// # Chia analogy
+///
+/// Corresponds to reading `current_peak` from the `block_store` metadata in Chia's
+/// `BlockStore.get_peak()`. The DIG version uses a fixed-width binary encoding
+/// instead of SQLite row access.
+///
+/// # Called by
+///
+/// [`BlockStore::open`] and [`BlockStore::open_readonly`] to populate the in-memory
+/// [`BlockStore::tip`] field at startup.
 fn load_tip(db: &DB) -> Result<Option<ChainTip>, BlockStoreError> {
     let meta = db
         .cf_handle(CF_METADATA)
@@ -706,6 +1020,36 @@ fn load_tip(db: &DB) -> Result<Option<ChainTip>, BlockStoreError> {
     ChainTip::from_bytes(&raw).map(Some)
 }
 
+/// Pre-verify recent canonical blocks exist in [`CF_BLOCKS`] during startup warming.
+///
+/// Walks backward from `tip.height` for `depth` heights, reading each height's hash
+/// from [`CF_CANONICAL`] and probing [`CF_BLOCKS`] for existence. This does **not**
+/// deserialize blocks or populate the in-memory LRU (that happens lazily on first
+/// `get_block` call); it only counts how many blocks are physically present.
+///
+/// # Chia analogy
+///
+/// Chia's `BlockStore` does not warm caches on startup in the same way, but the
+/// concept maps to the `_load_block_records` path that pre-populates the
+/// `block_record_cache` from SQLite. DIG's approach is lighter: we only verify
+/// existence, deferring deserialization to first access.
+///
+/// # Parameters
+///
+/// - `db` — RocksDB handle (not yet wrapped in `BlockStore`; called during construction).
+/// - `tip` — current chain tip; if `None`, returns 0 immediately (no genesis yet).
+/// - `depth` — number of trailing heights to probe, configured via
+///   [`BlockStoreConfig::warm_cache_depth`](crate::BlockStoreConfig::warm_cache_depth).
+///
+/// # Returns
+///
+/// Count of heights where a block body was found in [`CF_BLOCKS`]. Exposed via
+/// [`BlockStore::warm_blocks_loaded_count`] for startup diagnostics and test assertions.
+///
+/// # Called by
+///
+/// [`BlockStore::open`] when [`BlockStoreConfig::warm_cache_on_open`](crate::BlockStoreConfig::warm_cache_on_open)
+/// is `true` ([`CAC-006`](../docs/requirements/domains/caching/specs/CAC-006_cache_warming_on_startup.md)).
 fn warm_recent_blocks(
     db: &DB,
     tip: &Option<ChainTip>,

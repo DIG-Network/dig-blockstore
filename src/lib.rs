@@ -57,7 +57,7 @@ pub use error::{
     BlockStoreError, ERR_INIT_GENESIS_ALREADY_INITIALIZED, ERR_INIT_GENESIS_READ_ONLY,
     ERR_MUTATION_READ_ONLY, ERR_OPEN_READONLY_PATH_MISSING_PREFIX,
 };
-pub use store::BlockStore;
+pub use store::{BlockStore, StreamBlocksInRange};
 pub use types::{BlockRecord, ChainTip, StorageStats, StoredCheckpoint};
 pub use wire::{block_from_wire_bytes, block_to_wire_bytes};
 

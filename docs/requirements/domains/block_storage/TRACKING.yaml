@@ -35,8 +35,9 @@ items:
 
   - id: BLK-006
     title: Prefetching for Sequential Access (stream_blocks_in_range)
-    status: gap
+    status: done
     spec_ref: "5.4"
+    notes: "stream_blocks_in_range: readahead CF_CANONICAL scan + lazy CF_BLOCKS get_cf_opt; readahead_size on store; StreamBlocksInRange iterator; cf_blocks_stream_physical_get_count; tests/blk_006_tests.rs"
 
   - id: BLK-007
     title: Async API
