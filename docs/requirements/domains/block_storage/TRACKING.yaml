@@ -53,8 +53,9 @@ items:
 
   - id: BLK-009
     title: Attestation Storage
-    status: gap
+    status: done
     spec_ref: "5.6"
+    notes: "BlockStore::put_attestation / get_attestation; bincode + hash_key in CF_ATTESTED; read-only parity; tests/blk_009_tests.rs"
 
   - id: BLK-010
     title: Status Updates (update_status)

@@ -22,7 +22,8 @@
 //! - [`CF_HEADERS`]: Uncompressed bincode headers keyed by header hash ([`SER-002`]).
 //! - [`CF_CANONICAL`]: Dense height→hash index for the canonical chain ([`CAN-001`]).
 //! - [`CF_METADATA`]: Tip, genesis hash, schema version, zstd dictionary ([`TYP-002`]).
-//! - [`CF_ATTESTED`], [`CF_CHECKPOINTS`]: Reserved for future attestation/checkpoint storage.
+//! - [`CF_ATTESTED`]: [`AttestedBlock`](dig_block::AttestedBlock) rows via [`BlockStore::put_attestation`] ([`BLK-009`](../docs/requirements/domains/block_storage/specs/BLK-009.md)).
+//! - [`CF_CHECKPOINTS`]: Checkpoint storage ([`CKP-*`](../docs/requirements/IMPLEMENTATION_ORDER.md) Phase 9).
 //!
 //! # Three-tier read path
 //!
@@ -54,6 +55,7 @@
 //! - [`BLK-006`](../docs/requirements/domains/block_storage/specs/BLK-006.md) — `stream_blocks_in_range` sequential readahead.
 //! - [`BLK-007`](../docs/requirements/domains/block_storage/specs/BLK-007.md) — async read wrappers (`get_block_async`, …).
 //! - [`BLK-008`](../docs/requirements/domains/block_storage/specs/BLK-008.md) — async write pipeline (`put_pipelined`, batched `WriteBatch`).
+//! - [`BLK-009`](../docs/requirements/domains/block_storage/specs/BLK-009.md) — `put_attestation` / `get_attestation` on [`CF_ATTESTED`].
 //! - [`SER-001`](../docs/requirements/domains/serialization/specs/SER-001.md) — bincode + zstd block serialization.
 //! - [`SER-002`](../docs/requirements/domains/serialization/specs/SER-002.md) — bincode-only header serialization.
 //! - [`SER-005`](../docs/requirements/domains/serialization/specs/SER-005.md) — dictionary training and persistence.
@@ -72,7 +74,7 @@ use std::time::Duration;
 use tokio::sync::{mpsc, oneshot};
 
 use chia_protocol::Bytes32;
-use dig_block::{BlockStatus, L2Block, L2BlockHeader};
+use dig_block::{AttestedBlock, BlockStatus, L2Block, L2BlockHeader};
 use parking_lot::{Mutex, RwLock};
 use rand::seq::SliceRandom;
 use rocksdb::{ColumnFamily, Direction, IteratorMode, Options, ReadOptions, WriteBatch, DB};
@@ -80,8 +82,8 @@ use rocksdb::{ColumnFamily, Direction, IteratorMode, Options, ReadOptions, Write
 use crate::cache::sharded::{ShardedBlockCache, ShardedHeaderCache};
 use crate::cf_options;
 use crate::constants::{
-    CF_BLOCKS, CF_CANONICAL, CF_HEADERS, CF_METADATA, DICT_TARGET_SIZE, DICT_TRAINING_THRESHOLD,
-    META_GENESIS_HASH, META_TIP, META_ZSTD_DICT,
+    CF_ATTESTED, CF_BLOCKS, CF_CANONICAL, CF_HEADERS, CF_METADATA, DICT_TARGET_SIZE,
+    DICT_TRAINING_THRESHOLD, META_GENESIS_HASH, META_TIP, META_ZSTD_DICT,
 };
 use crate::encoding::{decode_height_key, hash_key, height_key};
 use crate::error::{
@@ -115,7 +117,7 @@ pub struct BlockStoreInner {
     /// RocksDB handle shared across all operations. Thread-safe via RocksDB's internal locking.
     /// All six column families ([`TYP-001`]) are created at open time.
     db: Arc<DB>,
-    /// When `true`, all mutation APIs (`put_block`, `init_genesis`) return
+    /// When `true`, all mutation APIs (`put_block`, `init_genesis`, [`BlockStore::put_attestation`](BlockStore::put_attestation)) return
     /// [`BlockStoreError::Serialization`] with [`ERR_MUTATION_READ_ONLY`].
     /// Set by [`BlockStore::open_readonly`]; cannot be toggled after construction.
     read_only: bool,
@@ -790,6 +792,59 @@ impl BlockStore {
     #[inline]
     pub fn put(&self, block: &L2Block, canonical: bool) -> Result<bool, BlockStoreError> {
         self.put_block(block, canonical)
+    }
+
+    /// **[`BLK-009`](../docs/requirements/domains/block_storage/specs/BLK-009.md)** — Persist an [`AttestedBlock`] under the block’s hash key.
+    ///
+    /// **Key:** [`hash_key`](crate::encoding::hash_key)(`hash`) — raw 32 bytes in [`CF_ATTESTED`] ([`KEY-001`](../docs/requirements/domains/key_encoding/specs/KEY-001_hash_keys.md)), identical key shape to [`CF_BLOCKS`] / [`CF_HEADERS`].
+    ///
+    /// **Value:** [`bincode::serialize`] of `attested` (uncompressed; attestations are small per BLK-009 implementation notes).
+    ///
+    /// **Hash vs payload:** Callers normally pass `hash == attested.hash()`; this method does **not** verify that invariant so
+    /// tests and migration tooling can stage rows independently of body presence in [`CF_BLOCKS`].
+    ///
+    /// **Overwrite (AC §4):** A second call with the same `hash` replaces the previous value (`DB::put_cf`).
+    ///
+    /// **Read-only:** Returns [`BlockStoreError::Serialization`] with [`ERR_MUTATION_READ_ONLY`] — same contract as [`Self::put_block`].
+    pub fn put_attestation(
+        &self,
+        hash: &Bytes32,
+        attested: &AttestedBlock,
+    ) -> Result<(), BlockStoreError> {
+        if self.read_only {
+            return Err(BlockStoreError::Serialization(
+                ERR_MUTATION_READ_ONLY.into(),
+            ));
+        }
+        let bytes = bincode::serialize(attested)
+            .map_err(|e| BlockStoreError::Serialization(e.to_string()))?;
+        let cf = self.cf(CF_ATTESTED)?;
+        self.db.put_cf(cf, hash_key(hash).as_slice(), &bytes)?;
+        Ok(())
+    }
+
+    /// **[`BLK-009`](../docs/requirements/domains/block_storage/specs/BLK-009.md)** — Read [`AttestedBlock`] bytes from [`CF_ATTESTED`].
+    ///
+    /// **Miss:** [`Ok(None)]` when no row exists (AC §3).
+    ///
+    /// **No attestation cache (yet):** Each call performs a RocksDB `get_cf` + bincode decode (BLK-009 notes; hot paths may add [`CAC-*`] later).
+    ///
+    /// **Corrupt rows:** Malformed bincode surfaces as [`BlockStoreError::Serialization`] so operators can distinguish “missing” vs “bad bytes”.
+    pub fn get_attestation(
+        &self,
+        hash: &Bytes32,
+    ) -> Result<Option<AttestedBlock>, BlockStoreError> {
+        let cf = self.cf(CF_ATTESTED)?;
+        let raw = match self.db.get_cf(cf, hash_key(hash).as_slice())? {
+            Some(b) => b,
+            None => return Ok(None),
+        };
+        let attested: AttestedBlock = bincode::deserialize(&raw).map_err(|e| {
+            BlockStoreError::Serialization(format!(
+                "get_attestation: bincode deserialize failed: {e}"
+            ))
+        })?;
+        Ok(Some(attested))
     }
 
     /// Async batched ingest ([`BLK-008`](../docs/requirements/domains/block_storage/specs/BLK-008.md), [`IMPLEMENTATION_ORDER.md`](../docs/requirements/IMPLEMENTATION_ORDER.md) Phase 5).
