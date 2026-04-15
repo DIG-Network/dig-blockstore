@@ -29,13 +29,19 @@ items:
 
   - id: CAC-004
     title: Canonical Height Index Cache
-    status: gap
+    status: implemented
     spec_ref: "11.4"
+    tests:
+      - tests/cac_004_tests.rs
+    notes: "BTreeMap<u64, Bytes32> on BlockStoreInner; bounded by canonical_height_cache_capacity; 5 tests"
 
   - id: CAC-005
     title: Hash-to-Height Reverse Cache
-    status: gap
+    status: implemented
     spec_ref: "11.5"
+    tests:
+      - tests/cac_005_tests.rs
+    notes: "ShardedLruCache<u64> (hash→height); populated on put_block and set_canonical; 5 tests"
 
   - id: CAC-006
     title: Cache Warming on Startup

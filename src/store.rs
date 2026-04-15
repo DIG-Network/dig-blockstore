@@ -88,7 +88,7 @@ use parking_lot::{Mutex, RwLock};
 use rand::seq::SliceRandom;
 use rocksdb::{ColumnFamily, Direction, IteratorMode, Options, ReadOptions, WriteBatch, DB};
 
-use crate::cache::sharded::{ShardedBlockCache, ShardedHeaderCache};
+use crate::cache::sharded::{ShardedBlockCache, ShardedHeaderCache, ShardedLruCache};
 use crate::canonical::mmap::CanonicalBin;
 use crate::cf_options;
 use crate::constants::{
@@ -199,6 +199,20 @@ pub struct BlockStoreInner {
     /// **Reads:** [`parking_lot::RwLock::read`] for [`Self::get_hash_by_height`] (hot path). **Writes:**
     /// [`RwLock::write`] after every successful RocksDB batch that touches the canonical index (`init_genesis`, [`BlockStore::put_block`], pipeline flush).
     canonical_bin: RwLock<CanonicalBin>,
+    /// In-memory height→hash cache for hot canonical heights ([`CAC-004`](../docs/requirements/domains/caching/specs/CAC-004_canonical_height_index_cache.md)).
+    ///
+    /// **BTreeMap** provides O(log n) lookup and ordered iteration for range queries.
+    /// Populated from `set_canonical`, `put_block(canonical=true)`, and `get_hash_by_height` read-through.
+    /// Evicted on rollback. Bounded by `canonical_height_cache_capacity` (default 10,000).
+    canonical_height_cache: RwLock<std::collections::BTreeMap<u64, Bytes32>>,
+    /// Max entries before the lowest-height entry is evicted from [`Self::canonical_height_cache`].
+    canonical_height_cache_capacity: usize,
+    /// Hash→height reverse lookup cache ([`CAC-005`](../docs/requirements/domains/caching/specs/CAC-005_hash_to_height_reverse_cache.md)).
+    ///
+    /// Sharded LRU with `u64` values (block height). Populated on `put_block`, header reads,
+    /// and block reads. Used by `find_common_ancestor` and `set_canonical` to avoid header
+    /// deserialization solely for height extraction.
+    hash_to_height_cache: Arc<ShardedLruCache<u64>>,
 }
 
 /// Primary handle for all block persistence APIs.
@@ -310,6 +324,12 @@ impl BlockStore {
                 pipeline_channel_capacity: config.write_pipeline_channel_capacity.max(1),
                 pipeline_write_batches: AtomicUsize::new(0),
                 canonical_bin,
+                canonical_height_cache: RwLock::new(std::collections::BTreeMap::new()),
+                canonical_height_cache_capacity: config.canonical_height_cache_capacity,
+                hash_to_height_cache: Arc::new(ShardedLruCache::new(
+                    config.hash_to_height_cache_capacity,
+                    shards,
+                )),
             }),
             pipeline_tx: Arc::new(tokio::sync::Mutex::new(None)),
         })
@@ -375,6 +395,12 @@ impl BlockStore {
                 pipeline_channel_capacity: readonly_cfg.write_pipeline_channel_capacity.max(1),
                 pipeline_write_batches: AtomicUsize::new(0),
                 canonical_bin,
+                canonical_height_cache: RwLock::new(std::collections::BTreeMap::new()),
+                canonical_height_cache_capacity: readonly_cfg.canonical_height_cache_capacity,
+                hash_to_height_cache: Arc::new(ShardedLruCache::new(
+                    readonly_cfg.hash_to_height_cache_capacity,
+                    shards,
+                )),
             }),
             pipeline_tx: Arc::new(tokio::sync::Mutex::new(None)),
         })
@@ -857,9 +883,18 @@ impl BlockStore {
     /// [`get_record_by_height`](Self::get_record_by_height), and
     /// [`get_epoch_block_hashes`](Self::get_epoch_block_hashes) all delegate through this.
     pub fn get_hash_by_height(&self, height: u64) -> Result<Option<Bytes32>, BlockStoreError> {
-        if let Some(arr) = self.canonical_bin.read().read_hash_bytes(height) {
-            return Ok(Some(Bytes32::new(arr)));
+        // Tier 0: CAC-004 in-memory BTreeMap (fastest, O(log n) with no I/O)
+        if let Some(hash) = self.canonical_height_cache.read().get(&height).copied() {
+            return Ok(Some(hash));
         }
+        // Tier 1: mmap canonical.bin (O(1) page-cache read, ~10ns)
+        if let Some(arr) = self.canonical_bin.read().read_hash_bytes(height) {
+            let hash = Bytes32::new(arr);
+            // Populate CAC-004 on read-through
+            self.insert_canonical_height_cache(height, hash);
+            return Ok(Some(hash));
+        }
+        // Tier 2: CF_CANONICAL RocksDB (1-10us)
         let cf = self.cf(CF_CANONICAL)?;
         let hk = height_key(height);
         let Some(hash_bytes) = self.db.get_cf(cf, hk.as_slice())? else {
@@ -870,7 +905,28 @@ impl BlockStore {
                 "get_hash_by_height: CF_CANONICAL value must be exactly 32 bytes".into(),
             )
         })?;
-        Ok(Some(Bytes32::new(arr)))
+        let hash = Bytes32::new(arr);
+        // Populate CAC-004 on CF_CANONICAL read-through
+        self.insert_canonical_height_cache(height, hash);
+        Ok(Some(hash))
+    }
+
+    /// Insert a height→hash mapping into the CAC-004 BTreeMap, evicting the lowest
+    /// height if the cache exceeds its configured capacity.
+    fn insert_canonical_height_cache(&self, height: u64, hash: Bytes32) {
+        if self.canonical_height_cache_capacity == 0 {
+            return;
+        }
+        let mut cache = self.canonical_height_cache.write();
+        cache.insert(height, hash);
+        // Bounded eviction: remove lowest height when over capacity
+        while cache.len() > self.canonical_height_cache_capacity {
+            if let Some(&lowest) = cache.keys().next() {
+                cache.remove(&lowest);
+            } else {
+                break;
+            }
+        }
     }
 
     /// Look up the canonical block at `height` ([`CAN-006`](../docs/requirements/domains/canonical_chain/specs/CAN-006.md) precursor, [`BLK-014`](../docs/requirements/domains/block_storage/specs/BLK-014.md) building block).
@@ -1186,11 +1242,15 @@ impl BlockStore {
             self.canonical_bin
                 .write()
                 .extend_write(block.height(), &hash)?;
+            // CAC-004: populate height→hash cache for canonical blocks
+            self.insert_canonical_height_cache(block.height(), hash);
         }
         let record = BlockRecord::from_header(&block.header, BlockStatus::Validated);
         self.record_cache.lock().insert(hash, record);
         self.block_cache.insert(hash, block.clone());
         self.header_cache.insert(hash, block.header.clone());
+        // CAC-005: populate hash→height cache for all blocks (canonical or not)
+        self.hash_to_height_cache.insert(hash, block.height());
         self.maybe_train_dictionary()?;
         Ok(true)
     }
@@ -1228,6 +1288,10 @@ impl BlockStore {
         self.db
             .put_cf(cf, height_key(height), hash_key(hash).as_slice())?;
         self.canonical_bin.write().extend_write(height, hash)?;
+        // CAC-004: populate height→hash cache
+        self.insert_canonical_height_cache(height, *hash);
+        // CAC-005: populate hash→height cache
+        self.hash_to_height_cache.insert(*hash, height);
         if let Some(r) = self.record_cache.lock().get_mut(hash) {
             r.in_canonical_chain = true;
         } else {

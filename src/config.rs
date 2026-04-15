@@ -110,6 +110,19 @@ pub struct BlockStoreConfig {
     /// Hint for sequential readahead ([`BLK-006`](../../docs/requirements/domains/block_storage/specs/BLK-006.md)).
     pub readahead_size: usize,
 
+    // --- Caching (CAC-004 / CAC-005) ---
+    /// Max entries in the canonical height→hash `BTreeMap` cache ([`CAC-004`](../../docs/requirements/domains/caching/specs/CAC-004_canonical_height_index_cache.md)).
+    ///
+    /// When the cache exceeds this size, the **lowest** height entry is evicted.
+    /// Set to `0` to disable the height cache entirely.
+    pub canonical_height_cache_capacity: usize,
+
+    /// Max entries in the hash→height reverse lookup cache ([`CAC-005`](../../docs/requirements/domains/caching/specs/CAC-005_hash_to_height_reverse_cache.md)).
+    ///
+    /// Uses the same sharded LRU infrastructure as block/header caches.
+    /// Higher capacity is practical because each entry is only 40 bytes (32 hash + 8 height).
+    pub hash_to_height_cache_capacity: usize,
+
     // --- Pruning (PRN-003 / PRN-004 precursors) ---
     /// Register compaction-time pruning when true ([`PRN-003`](../../docs/requirements/domains/pruning/specs/PRN-003_compaction_filter.md)).
     pub enable_compaction_pruning: bool,
@@ -141,6 +154,8 @@ impl Default for BlockStoreConfig {
             write_pipeline_channel_capacity: 256,
             sync_writes: false,
             readahead_size: 2_097_152,
+            canonical_height_cache_capacity: 10_000,
+            hash_to_height_cache_capacity: 10_000,
             enable_compaction_pruning: false,
             min_retained_height: None,
         }

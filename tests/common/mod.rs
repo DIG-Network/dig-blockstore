@@ -113,6 +113,8 @@ pub fn test_config(db_path: PathBuf) -> BlockStoreConfig {
         write_pipeline_channel_capacity: 8,
         sync_writes: false,
         readahead_size: 64 * 1024,
+        canonical_height_cache_capacity: 100,
+        hash_to_height_cache_capacity: 100,
         enable_compaction_pruning: false,
         min_retained_height: None,
     }
