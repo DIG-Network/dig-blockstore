@@ -5,20 +5,32 @@ crate: dig-blockstore
 items:
   - id: SNP-001
     title: Export Snapshot
-    status: gap
+    status: implemented
     spec_ref: "14.1"
+    tests:
+      - tests/snp_001_tests.rs
+    notes: "export_snapshot: manifest + length-prefixed pre-compressed blocks + SHA-256; 3 tests"
 
   - id: SNP-002
     title: Import Snapshot
-    status: gap
+    status: implemented
     spec_ref: "14.2"
+    tests:
+      - tests/snp_002_tests.rs
+    notes: "import_snapshot: manifest validation, contiguity, parent links, checksum; put_block canonical; 3 tests"
 
   - id: SNP-003
     title: SnapshotManifest Struct
-    status: gap
+    status: implemented
     spec_ref: "14.3"
+    tests:
+      - tests/snp_003_tests.rs
+    notes: "6 fields, Serialize+Deserialize, bincode round-trip; 4 tests"
 
   - id: SNP-004
     title: Checksum Verification
-    status: gap
+    status: implemented
     spec_ref: "14.1, 14.2"
+    tests:
+      - tests/snp_004_tests.rs
+    notes: "chia_sha2::Sha256 over all bytes; corruption/truncation detection; deterministic; 4 tests"

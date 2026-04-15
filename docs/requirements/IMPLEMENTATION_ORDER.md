@@ -110,10 +110,10 @@ After completing a requirement: write tests, verify they pass, update TRACKING.y
 
 ## Phase 11: Snapshot
 
-- [ ] SNP-001 — Export snapshot (canonical blocks [start,end], streaming with manifest)
-- [ ] SNP-002 — Import snapshot (validate schema, contiguity, parent-child links)
-- [ ] SNP-003 — SnapshotManifest struct
-- [ ] SNP-004 — Checksum verification (SHA-256 of all preceding bytes)
+- [x] SNP-001 — Export snapshot (canonical blocks [start,end], streaming with manifest)
+- [x] SNP-002 — Import snapshot (validate schema, contiguity, parent-child links)
+- [x] SNP-003 — SnapshotManifest struct
+- [x] SNP-004 — Checksum verification (SHA-256 of all preceding bytes)
 
 ---
 
