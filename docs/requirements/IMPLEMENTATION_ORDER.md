@@ -60,7 +60,7 @@ After completing a requirement: write tests, verify they pass, update TRACKING.y
 - [x] BLK-009 — put_attestation / get_attestation in CF_ATTESTED
 - [x] BLK-010 — update_status (BlockStatus update on BlockRecord in cache)
 - [x] BLK-011 — has_block (lightweight existence check by hash)
-- [ ] BLK-012 — stats() (storage statistics via StorageStats)
+- [x] BLK-012 — stats() (storage statistics via StorageStats)
 - [ ] BLK-013 — flush() and compact() (WAL flush and manual compaction)
 - [ ] BLK-014 — get_blocks_in_range (canonical blocks in [start, end] inclusive)
 - [ ] BLK-015 — get_records_in_range (canonical records in [start, end] inclusive)

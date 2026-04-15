@@ -58,6 +58,7 @@
 //! - [`BLK-009`](../docs/requirements/domains/block_storage/specs/BLK-009.md) — `put_attestation` / `get_attestation` on [`CF_ATTESTED`].
 //! - [`BLK-010`](../docs/requirements/domains/block_storage/specs/BLK-010.md) — `update_status` on in-memory [`BlockRecord`] only.
 //! - [`BLK-011`](../docs/requirements/domains/block_storage/specs/BLK-011.md) — `has_block` lightweight existence by hash.
+//! - [`BLK-012`](../docs/requirements/domains/block_storage/specs/BLK-012.md) — `stats` aggregate [`StorageStats`](crate::types::StorageStats) snapshot.
 //! - [`SER-001`](../docs/requirements/domains/serialization/specs/SER-001.md) — bincode + zstd block serialization.
 //! - [`SER-002`](../docs/requirements/domains/serialization/specs/SER-002.md) — bincode-only header serialization.
 //! - [`SER-005`](../docs/requirements/domains/serialization/specs/SER-005.md) — dictionary training and persistence.
@@ -84,8 +85,9 @@ use rocksdb::{ColumnFamily, Direction, IteratorMode, Options, ReadOptions, Write
 use crate::cache::sharded::{ShardedBlockCache, ShardedHeaderCache};
 use crate::cf_options;
 use crate::constants::{
-    CF_ATTESTED, CF_BLOCKS, CF_CANONICAL, CF_HEADERS, CF_METADATA, DICT_TARGET_SIZE,
-    DICT_TRAINING_THRESHOLD, META_GENESIS_HASH, META_TIP, META_ZSTD_DICT,
+    CF_ATTESTED, CF_BLOCKS, CF_CANONICAL, CF_CHECKPOINTS, CF_HEADERS, CF_METADATA,
+    DICT_TARGET_SIZE, DICT_TRAINING_THRESHOLD, META_GENESIS_HASH, META_MIN_HEIGHT, META_TIP,
+    META_ZSTD_DICT,
 };
 use crate::encoding::{decode_height_key, hash_key, height_key};
 use crate::error::{
@@ -93,7 +95,7 @@ use crate::error::{
     ERR_INIT_GENESIS_READ_ONLY, ERR_MUTATION_READ_ONLY, ERR_OPEN_READONLY_PATH_MISSING_PREFIX,
     ERR_UPDATE_STATUS_RECORD_NOT_CACHED_PREFIX,
 };
-use crate::types::{BlockRecord, ChainTip};
+use crate::types::{BlockRecord, ChainTip, StorageStats};
 use crate::BlockStoreConfig;
 
 /// One ingress job for [`run_write_pipeline`]: own the [`L2Block`], canonical flag, and per-block ack channel
@@ -560,6 +562,79 @@ impl BlockStore {
         }
         let cf_b = self.cf(CF_BLOCKS)?;
         Ok(self.db.get_cf(cf_b, key.as_slice())?.is_some())
+    }
+
+    /// **[`BLK-012`](../docs/requirements/domains/block_storage/specs/BLK-012.md)** — Aggregate [`StorageStats`](crate::types::StorageStats) for monitoring / diagnostics ([`TYP-007`](../docs/requirements/domains/storage_types/specs/TYP-007.md), [`NORMATIVE` BLK-012](../docs/requirements/domains/block_storage/NORMATIVE.md#blk-012-storage-statistics-stats)).
+    ///
+    /// **Row counts:** Each `*_count` field is the number of keys in the corresponding column family from a linear
+    /// [`DB::iterator_cf`](rocksdb::DB::iterator_cf) scan ([`CF_BLOCKS`], [`CF_HEADERS`], [`CF_CANONICAL`],
+    /// [`CF_CHECKPOINTS`], [`CF_ATTESTED`]). This is **exact** for current store sizes (typical node counts) and
+    /// matches NORMATIVE wording (“reflects the total number of entries”). If full scans become too costly at scale,
+    /// a future revision may offer `rocksdb.estimate-num-keys` behind configuration with documented error bounds.
+    ///
+    /// **Tip / pruning:** [`StorageStats::tip_height`] mirrors [`Self::tip`] (RAM snapshot loaded from [`META_TIP`] on open, updated by [`Self::init_genesis`] today). [`Self::put_block`] does not yet advance the tip ([`CAN-007`](../docs/requirements/domains/canonical_chain/specs/CAN-007.md)); operators should not assume `tip_height == max(block heights)` until chain-tip APIs land. [`StorageStats::min_height`] reads
+    /// [`META_MIN_HEIGHT`] in [`CF_METADATA`] as **8 bytes little-endian** `u64` ([`storage_types/NORMATIVE`](../docs/requirements/domains/storage_types/NORMATIVE.md)); missing key means no prune watermark yet ([`PRN-004`](../docs/requirements/domains/pruning/specs/PRN-004_min_retained_height_tracking.md)).
+    ///
+    /// **Disk estimate:** [`StorageStats::total_size_bytes`] sums per-CF RocksDB property `rocksdb.estimate-live-data-size`
+    /// (live SST + memtable footprint estimate). It is **not** a byte-exact `du` of the directory; callers should treat
+    /// it as an order-of-magnitude health signal until BLK-013 adds explicit flush/compact hooks.
+    pub fn stats(&self) -> Result<StorageStats, BlockStoreError> {
+        Ok(StorageStats {
+            block_count: self.count_cf_entries(CF_BLOCKS)?,
+            canonical_block_count: self.count_cf_entries(CF_CANONICAL)?,
+            header_count: self.count_cf_entries(CF_HEADERS)?,
+            checkpoint_count: self.count_cf_entries(CF_CHECKPOINTS)?,
+            attested_count: self.count_cf_entries(CF_ATTESTED)?,
+            tip_height: self.tip().map(|t| t.height),
+            min_height: self.read_min_retained_height()?,
+            total_size_bytes: self.sum_cf_live_data_size_estimates()?,
+        })
+    }
+
+    /// Exact key count for `cf_name` — used by [`Self::stats`] ([`BLK-012`](../docs/requirements/domains/block_storage/specs/BLK-012.md)).
+    fn count_cf_entries(&self, cf_name: &'static str) -> Result<u64, BlockStoreError> {
+        let cf = self.cf(cf_name)?;
+        let mut n = 0u64;
+        for entry in self.db.iterator_cf(cf, IteratorMode::Start) {
+            let (_k, _v) = entry?;
+            n += 1;
+        }
+        Ok(n)
+    }
+
+    /// Sum RocksDB `rocksdb.estimate-live-data-size` across all user column families ([`BLK-012`](../docs/requirements/domains/block_storage/specs/BLK-012.md) § Field Population).
+    fn sum_cf_live_data_size_estimates(&self) -> Result<u64, BlockStoreError> {
+        const PROP: &str = "rocksdb.estimate-live-data-size";
+        let mut sum = 0u64;
+        for name in [
+            CF_BLOCKS,
+            CF_HEADERS,
+            CF_CANONICAL,
+            CF_METADATA,
+            CF_ATTESTED,
+            CF_CHECKPOINTS,
+        ] {
+            let cf = self.cf(name)?;
+            if let Some(v) = self.db.property_int_value_cf(cf, PROP)? {
+                sum = sum.saturating_add(v);
+            }
+        }
+        Ok(sum)
+    }
+
+    /// Read persisted minimum retained height, if pruning has written [`META_MIN_HEIGHT`].
+    fn read_min_retained_height(&self) -> Result<Option<u64>, BlockStoreError> {
+        let meta = self.cf(CF_METADATA)?;
+        let Some(bytes) = self.db.get_cf(meta, META_MIN_HEIGHT.as_bytes())? else {
+            return Ok(None);
+        };
+        let arr: [u8; 8] = bytes.as_slice().try_into().map_err(|_| {
+            BlockStoreError::Serialization(format!(
+                "stats: META_MIN_HEIGHT value must be exactly 8 bytes (little-endian u64), got {} bytes",
+                bytes.len()
+            ))
+        })?;
+        Ok(Some(u64::from_le_bytes(arr)))
     }
 
     /// Batch-fetch blocks by hash ([`BLK-005`](../docs/requirements/domains/block_storage/specs/BLK-005.md)).

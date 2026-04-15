@@ -71,8 +71,9 @@ items:
 
   - id: BLK-012
     title: Storage Statistics (stats)
-    status: gap
+    status: done
     spec_ref: "15.7"
+    notes: "BlockStore::stats; exact CF iterator counts; META_MIN_HEIGHT LE u64; sum rocksdb.estimate-live-data-size per CF; tests/blk_012_tests.rs"
 
   - id: BLK-013
     title: Flush and Compact (flush, compact)
