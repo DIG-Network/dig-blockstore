@@ -77,8 +77,9 @@ items:
 
   - id: BLK-013
     title: Flush and Compact (flush, compact)
-    status: gap
+    status: done
     spec_ref: "15.7"
+    notes: "BlockStore::flush (flush_wal true + DB::flush); compact_range_cf over ALL_COLUMN_FAMILIES; RocksDb errors from flush; tests/blk_013_tests.rs"
 
   - id: BLK-014
     title: Get Blocks in Range (get_blocks_in_range)

@@ -59,6 +59,7 @@
 //! - [`BLK-010`](../docs/requirements/domains/block_storage/specs/BLK-010.md) — `update_status` on in-memory [`BlockRecord`] only.
 //! - [`BLK-011`](../docs/requirements/domains/block_storage/specs/BLK-011.md) — `has_block` lightweight existence by hash.
 //! - [`BLK-012`](../docs/requirements/domains/block_storage/specs/BLK-012.md) — `stats` aggregate [`StorageStats`](crate::types::StorageStats) snapshot.
+//! - [`BLK-013`](../docs/requirements/domains/block_storage/specs/BLK-013.md) — `flush` / `compact` maintenance on the shared [`rocksdb::DB`].
 //! - [`SER-001`](../docs/requirements/domains/serialization/specs/SER-001.md) — bincode + zstd block serialization.
 //! - [`SER-002`](../docs/requirements/domains/serialization/specs/SER-002.md) — bincode-only header serialization.
 //! - [`SER-005`](../docs/requirements/domains/serialization/specs/SER-005.md) — dictionary training and persistence.
@@ -577,7 +578,8 @@ impl BlockStore {
     ///
     /// **Disk estimate:** [`StorageStats::total_size_bytes`] sums per-CF RocksDB property `rocksdb.estimate-live-data-size`
     /// (live SST + memtable footprint estimate). It is **not** a byte-exact `du` of the directory; callers should treat
-    /// it as an order-of-magnitude health signal until BLK-013 adds explicit flush/compact hooks.
+    /// it as an order-of-magnitude health signal; use [`Self::flush`] / [`Self::compact`] before relying on
+    /// filesystem-level durability or space reclamation ([`BLK-013`](../docs/requirements/domains/block_storage/specs/BLK-013.md)).
     pub fn stats(&self) -> Result<StorageStats, BlockStoreError> {
         Ok(StorageStats {
             block_count: self.count_cf_entries(CF_BLOCKS)?,
@@ -635,6 +637,42 @@ impl BlockStore {
             ))
         })?;
         Ok(Some(u64::from_le_bytes(arr)))
+    }
+
+    /// **[`BLK-013`](../docs/requirements/domains/block_storage/specs/BLK-013.md)** — Persist buffered engine state
+    /// ([`NORMATIVE` BLK-013](../docs/requirements/domains/block_storage/NORMATIVE.md#blk-013-flush-and-compact)).
+    ///
+    /// **Semantics:** First `rocksdb::DB::flush_wal(true)` so the write-ahead log is **synced** through the OS to
+    /// stable storage, then [`rocksdb::DB::flush`] to flush **all** column-family
+    /// memtables to SST files. Together this matches operators’ “make my recent writes durable” intent while staying
+    /// close to the BLK-013 spec snippet (which only showed `flush()` — WAL sync is required by NORMATIVE item 1’s
+    /// “WAL flush” wording).
+    ///
+    /// **Logical state:** Does not mutate dig-blockstore caches, tip, or row keys — only RocksDB I/O.
+    ///
+    /// **Errors:** Any [`rocksdb::Error`] maps to [`BlockStoreError::RocksDb`] ([`ERR-002`](../docs/requirements/domains/error_types/specs/ERR-002_error_from_conversions.md)).
+    pub fn flush(&self) -> Result<(), BlockStoreError> {
+        self.db.flush_wal(true)?;
+        self.db.flush()?;
+        Ok(())
+    }
+
+    /// **[`BLK-013`](../docs/requirements/domains/block_storage/specs/BLK-013.md)** — Request manual compaction on
+    /// **every** column family in [`crate::constants::ALL_COLUMN_FAMILIES`] ([`TYP-001`](../docs/requirements/domains/storage_types/specs/TYP-001.md)).
+    ///
+    /// **Implementation:** For each family, [`DB::compact_range_cf`](rocksdb::DB::compact_range_cf) with a `None`
+    /// key range compacts the **entire** keyspace (RocksDB schedules background work). The rust-rocksdb binding
+    /// returns `()` from `compact_range_cf` (errors surface asynchronously); callers use this for **space reclamation**
+    /// and read amplification tuning, not as a transactional barrier.
+    ///
+    /// **Logical state:** Compaction does not delete live keys written by [`Self::put_block`] / [`Self::init_genesis`];
+    /// it merges SSTables. Same error mapping as [`Self::flush`] if future APIs gain fallible compaction entry points.
+    pub fn compact(&self) -> Result<(), BlockStoreError> {
+        for &name in crate::constants::ALL_COLUMN_FAMILIES {
+            let cf = self.cf(name)?;
+            self.db.compact_range_cf(cf, None::<&[u8]>, None::<&[u8]>);
+        }
+        Ok(())
     }
 
     /// Batch-fetch blocks by hash ([`BLK-005`](../docs/requirements/domains/block_storage/specs/BLK-005.md)).
