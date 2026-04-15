@@ -1,37 +1,38 @@
-//! Sharded LRU cache for hot [`dig_block::L2Block`] values ([`CAC-001`](../../docs/requirements/domains/caching/specs/CAC-001_sharded_block_cache.md)).
+//! Sharded LRU caches for hot dig-block values ([`CAC-001`](../../docs/requirements/domains/caching/specs/CAC-001_sharded_block_cache.md)).
 //!
-//! ## Why this exists (BLK-002)
+//! ## Types
 //!
-//! [`crate::store::BlockStore::get_block`](crate::store::BlockStore::get_block) MUST consult RAM before
-//! [`rocksdb`](https://docs.rs/rocksdb) [`CF_BLOCKS`](crate::CF_BLOCKS) ([`BLK-002`](../../docs/requirements/domains/block_storage/specs/BLK-002.md)).
+//! - [`ShardedBlockCache`] — [`dig_block::L2Block`] bodies ([`BLK-002`](../../docs/requirements/domains/block_storage/specs/BLK-002.md)).
+//! - [`ShardedHeaderCache`] — [`dig_block::L2BlockHeader`] rows ([`BLK-003`](../../docs/requirements/domains/block_storage/specs/BLK-003.md), [`CAC-002`](../../docs/requirements/domains/caching/specs/CAC-002_sharded_header_cache.md) precursor).
+//!
+//! Both are aliases over [`ShardedLruCache`], which centralizes shard math and eviction policy.
 //!
 //! ## Locking note vs CAC-001 prose
 //!
 //! The normative CAC-001 snippet uses [`parking_lot::RwLock`] **read** locks for `get`. The [`lru::LruCache`] API
 //! requires `&mut self` to promote entries on access, so this implementation uses **write** locks per shard for
-//! `get` + `insert`. Contention is still reduced ~`num_shards`× versus one global LRU because unrelated hashes usually
-//! map to different shards ([`Self::shard_index`]).
+//! `get_clone` + `insert`. Contention is still reduced ~`num_shards`× versus one global LRU.
 //!
 //! ## Shard selection
 //!
 //! [`Bytes32`](chia_protocol::Bytes32) is uniform; we use `key[0]` like CAC-001. For power-of-two shard counts we
-//! apply a bitmask instead of `%` ([`CAC-001` § implementation notes](../../docs/requirements/domains/caching/specs/CAC-001_sharded_block_cache.md)).
+//! apply a bitmask instead of `%`.
 
 use std::num::NonZeroUsize;
 
 use chia_protocol::Bytes32;
-use dig_block::L2Block;
+use dig_block::{L2Block, L2BlockHeader};
 use lru::LruCache;
 use parking_lot::RwLock;
 
-/// Production sharded LRU for block bodies ([`CAC-001`](../../docs/requirements/domains/caching/specs/CAC-001_sharded_block_cache.md)).
-pub struct ShardedBlockCache {
-    shards: Vec<RwLock<LruCache<Bytes32, L2Block>>>,
+/// Generic sharded LRU keyed by block hash ([`CAC-001`](../../docs/requirements/domains/caching/specs/CAC-001_sharded_block_cache.md)).
+pub struct ShardedLruCache<V: Clone> {
+    shards: Vec<RwLock<LruCache<Bytes32, V>>>,
     num_shards: usize,
 }
 
-impl ShardedBlockCache {
-    /// Build `num_shards` LRUs; each shard capacity is `max(1, total_capacity / num_shards)` ([`CAC-001`](../../docs/requirements/domains/caching/specs/CAC-001_sharded_block_cache.md) § Configuration).
+impl<V: Clone> ShardedLruCache<V> {
+    /// Build `num_shards` LRUs; each shard capacity is `max(1, total_capacity / num_shards)`.
     ///
     /// **`num_shards`:** Clamped to ≥ 1. If not a power of two, [`Self::shard_index`] uses modulo instead of bitmask.
     pub fn new(total_capacity: usize, num_shards: usize) -> Self {
@@ -54,24 +55,30 @@ impl ShardedBlockCache {
         }
     }
 
-    /// Clone a cached block if present; promotes the entry inside the shard LRU.
-    pub fn get_clone(&self, key: &Bytes32) -> Option<L2Block> {
+    /// Clone a cached value if present; promotes the entry inside the shard LRU.
+    pub fn get_clone(&self, key: &Bytes32) -> Option<V> {
         let i = self.shard_index(key);
         let mut guard = self.shards[i].write();
         guard.get(key).cloned()
     }
 
     /// Insert / update; may evict LRU entry in this shard only.
-    pub fn insert(&self, key: Bytes32, block: L2Block) {
+    pub fn insert(&self, key: Bytes32, value: V) {
         let i = self.shard_index(&key);
         let mut guard = self.shards[i].write();
-        guard.put(key, block);
+        guard.put(key, value);
     }
 
-    /// Drop one entry — tests simulate eviction; future PRN / reorg hooks may call this for invalidation.
+    /// Drop one entry — tests simulate eviction; future invalidation / PRN hooks may reuse this.
     pub fn remove(&self, key: &Bytes32) {
         let i = self.shard_index(key);
         let mut guard = self.shards[i].write();
         let _ = guard.pop(key);
     }
 }
+
+/// Sharded LRU for block **bodies** ([`BLK-002`](../../docs/requirements/domains/block_storage/specs/BLK-002.md)).
+pub type ShardedBlockCache = ShardedLruCache<L2Block>;
+
+/// Sharded LRU for **headers** ([`BLK-003`](../../docs/requirements/domains/block_storage/specs/BLK-003.md)).
+pub type ShardedHeaderCache = ShardedLruCache<L2BlockHeader>;

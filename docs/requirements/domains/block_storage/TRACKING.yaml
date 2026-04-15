@@ -17,8 +17,9 @@ items:
 
   - id: BLK-003
     title: Get Header by Hash (get_header)
-    status: gap
+    status: done
     spec_ref: "5.2"
+    notes: "ShardedLruCache<L2BlockHeader> as ShardedHeaderCache; get_header; cf_headers_physical_get_count; invalidate_header_cache_entry; warm paths put/init_genesis/get_block/get_record; tests/blk_003_tests.rs"
 
   - id: BLK-004
     title: Get Record by Hash (get_record)

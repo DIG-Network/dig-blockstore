@@ -6,6 +6,7 @@
 //! - Tip / genesis metadata: [`crate::constants::META_TIP`], [`crate::constants::META_GENESIS_HASH`].
 //! - [`BlockRecord`](crate::BlockRecord) cache: in-memory only ([`BLK-001`](../docs/requirements/domains/block_storage/specs/BLK-001.md), [`TYP-004`](../docs/requirements/domains/storage_types/specs/TYP-004.md)).
 //! - Block body cache: [`crate::cache::sharded::ShardedBlockCache`] ([`BLK-002`](../docs/requirements/domains/block_storage/specs/BLK-002.md), [`CAC-001`](../docs/requirements/domains/caching/specs/CAC-001_sharded_block_cache.md)).
+//! - Header cache: [`crate::cache::sharded::ShardedHeaderCache`] ([`BLK-003`](../docs/requirements/domains/block_storage/specs/BLK-003.md), [`CAC-002`](../docs/requirements/domains/caching/specs/CAC-002_sharded_header_cache.md)).
 //!
 //! **Spec:** `docs/resources/SPEC.md` §15.1 (constructors), §16 (crate boundary).
 
@@ -20,7 +21,7 @@ use parking_lot::{Mutex, RwLock};
 use rand::seq::SliceRandom;
 use rocksdb::{IteratorMode, Options, WriteBatch, DB};
 
-use crate::cache::sharded::ShardedBlockCache;
+use crate::cache::sharded::{ShardedBlockCache, ShardedHeaderCache};
 use crate::cf_options;
 use crate::constants::{
     CF_BLOCKS, CF_CANONICAL, CF_HEADERS, CF_METADATA, DICT_TARGET_SIZE, DICT_TRAINING_THRESHOLD,
@@ -64,6 +65,12 @@ pub struct BlockStore {
     ///
     /// **Rationale:** Proves AC §2 “no I/O on hit” in `tests/blk_002_tests.rs`; cheap atomic hot path on miss only.
     cf_blocks_physical_gets: AtomicUsize,
+    /// Sharded LRU of [`L2BlockHeader`] values ([`BLK-003`](../docs/requirements/domains/block_storage/specs/BLK-003.md)).
+    ///
+    /// **Separate** from [`Self::block_cache`] per BLK-003 implementation notes (tunables: [`BlockStoreConfig::header_cache_capacity`](crate::BlockStoreConfig::header_cache_capacity)).
+    header_cache: Arc<ShardedHeaderCache>,
+    /// Count of RocksDB `get_cf` calls against [`CF_HEADERS`] from [`Self::get_header`] after a header-cache miss.
+    cf_headers_physical_gets: AtomicUsize,
 }
 
 impl BlockStore {
@@ -95,9 +102,11 @@ impl BlockStore {
         } else {
             0
         };
-        let block_cache = Arc::new(ShardedBlockCache::new(
-            config.block_cache_capacity,
-            config.cache_shards.max(1),
+        let shards = config.cache_shards.max(1);
+        let block_cache = Arc::new(ShardedBlockCache::new(config.block_cache_capacity, shards));
+        let header_cache = Arc::new(ShardedHeaderCache::new(
+            config.header_cache_capacity,
+            shards,
         ));
         Ok(Self {
             db,
@@ -111,6 +120,8 @@ impl BlockStore {
             record_cache: Mutex::new(HashMap::new()),
             block_cache,
             cf_blocks_physical_gets: AtomicUsize::new(0),
+            header_cache,
+            cf_headers_physical_gets: AtomicUsize::new(0),
         })
     }
 
@@ -140,9 +151,14 @@ impl BlockStore {
         let zstd_dict =
             resolve_zstd_dictionary(&db, use_compression_dict, zstd_dictionary_override)?;
         let tip = load_tip(&db)?;
+        let shards = readonly_cfg.cache_shards.max(1);
         let block_cache = Arc::new(ShardedBlockCache::new(
             readonly_cfg.block_cache_capacity,
-            readonly_cfg.cache_shards.max(1),
+            shards,
+        ));
+        let header_cache = Arc::new(ShardedHeaderCache::new(
+            readonly_cfg.header_cache_capacity,
+            shards,
         ));
         Ok(Self {
             db,
@@ -156,6 +172,8 @@ impl BlockStore {
             record_cache: Mutex::new(HashMap::new()),
             block_cache,
             cf_blocks_physical_gets: AtomicUsize::new(0),
+            header_cache,
+            cf_headers_physical_gets: AtomicUsize::new(0),
         })
     }
 
@@ -205,6 +223,7 @@ impl BlockStore {
         let record = BlockRecord::from_header(&block.header, BlockStatus::Validated);
         self.record_cache.lock().insert(hash, record);
         self.block_cache.insert(hash, block.clone());
+        self.header_cache.insert(hash, block.header.clone());
         self.maybe_train_dictionary()?;
         Ok(())
     }
@@ -314,6 +333,7 @@ impl BlockStore {
         };
         let block = self.deserialize_block(&raw)?;
         self.block_cache.insert(*hash, block.clone());
+        self.header_cache.insert(*hash, block.header.clone());
         Ok(Some(block))
     }
 
@@ -327,6 +347,38 @@ impl BlockStore {
     /// **Tests / ops:** [`tests/blk_002_tests.rs`] asserts hits add zero; misses increment exactly once per call.
     pub fn cf_blocks_physical_get_count(&self) -> u64 {
         self.cf_blocks_physical_gets.load(Ordering::Relaxed) as u64
+    }
+
+    /// Retrieve a block header by hash ([`BLK-003`](../docs/requirements/domains/block_storage/specs/BLK-003.md)).
+    ///
+    /// **Order:** [`Self::header_cache`] → on miss, `get_cf` [`CF_HEADERS`] → [`Self::deserialize_header`] (**no zstd**;
+    /// [`SER-002`](../docs/requirements/domains/serialization/specs/SER-002.md)).
+    ///
+    /// **Write path:** [`Self::put_block`] / [`Self::init_genesis`] insert headers in parallel with block bodies.
+    pub fn get_header(&self, hash: &Bytes32) -> Result<Option<L2BlockHeader>, BlockStoreError> {
+        if let Some(header) = self.header_cache.get_clone(hash) {
+            return Ok(Some(header));
+        }
+        let cf = self.cf(CF_HEADERS)?;
+        self.cf_headers_physical_gets
+            .fetch_add(1, Ordering::Relaxed);
+        let raw_opt = self.db.get_cf(cf, hash_key(hash).as_slice())?;
+        let Some(raw) = raw_opt else {
+            return Ok(None);
+        };
+        let header = Self::deserialize_header(&raw)?;
+        self.header_cache.insert(*hash, header.clone());
+        Ok(Some(header))
+    }
+
+    /// Drop one header from the in-memory LRU ([`BLK-003`](../docs/requirements/domains/block_storage/specs/BLK-003.md) tests / future invalidation).
+    pub fn invalidate_header_cache_entry(&self, hash: &Bytes32) {
+        self.header_cache.remove(hash);
+    }
+
+    /// Count of RocksDB [`CF_HEADERS`] reads from [`Self::get_header`] after a header-cache miss.
+    pub fn cf_headers_physical_get_count(&self) -> u64 {
+        self.cf_headers_physical_gets.load(Ordering::Relaxed) as u64
     }
 
     /// **[`BLK-001`](../docs/requirements/domains/block_storage/specs/BLK-001.md)** — Primary name in
@@ -367,6 +419,7 @@ impl BlockStore {
         let record = BlockRecord::from_header(&block.header, BlockStatus::Validated);
         self.record_cache.lock().insert(hash, record);
         self.block_cache.insert(hash, block.clone());
+        self.header_cache.insert(hash, block.header.clone());
         self.maybe_train_dictionary()?;
         Ok(true)
     }
@@ -393,6 +446,7 @@ impl BlockStore {
             return Ok(None);
         };
         let header = Self::deserialize_header(&bytes)?;
+        self.header_cache.insert(*hash, header.clone());
         let record = BlockRecord::from_header(&header, BlockStatus::Validated);
         let mut guard = self.record_cache.lock();
         guard.insert(*hash, record.clone());

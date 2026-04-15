@@ -31,7 +31,7 @@
 use std::path::PathBuf;
 use std::process::Command;
 
-use dig_blockstore::cache::sharded::ShardedBlockCache;
+use dig_blockstore::cache::sharded::{ShardedBlockCache, ShardedHeaderCache};
 use dig_blockstore::cache::warming::CacheWarming;
 use dig_blockstore::canonical::index::CanonicalIndex;
 use dig_blockstore::canonical::mmap::CanonicalMmap;
@@ -109,6 +109,7 @@ fn test_each_module_defines_required_public_items() {
     let _ = core::mem::size_of::<StorageStats>();
     let _ = core::mem::size_of::<BlockStoreError>();
     let _ = core::mem::size_of::<ShardedBlockCache>();
+    let _ = core::mem::size_of::<ShardedHeaderCache>();
     let _ = core::mem::size_of::<CacheWarming>();
     let _ = core::mem::size_of::<CanonicalIndex>();
     let _ = core::mem::size_of::<CanonicalMmap>();

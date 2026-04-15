@@ -4,7 +4,7 @@
 |----|--------|---------|----------------------|
 | BLK-001 | done | Store block with zstd compression, header, record cache, canonical mapping; idempotent | Integration: `tests/blk_001_tests.rs` — round-trip hash, idempotent CF_BYTES stable, zstd/bincode CF layout, get_record vs from_header, canonical on/off |
 | BLK-002 | done | Get block by hash with cache, zstd dictionary fallback, bincode deserialization | Integration: `tests/blk_002_tests.rs` — physical get counter, read-through, dict + plain fallback reopen, unknown hash |
-| BLK-003 | gap | Get header by hash with cache, no decompression | Unit: cache hit path; cache miss read-through from CF_HEADERS; verify no decompression attempted; missing hash returns None |
+| BLK-003 | done | Get header by hash with cache, no decompression | Integration: `tests/blk_003_tests.rs` — physical get counter, read-through, raw CF_HEADERS bincode (no zstd), unknown hash |
 | BLK-004 | gap | Get record by hash, derived from header, never persisted | Unit: cache hit path; cache miss derives from header via from_header(); verify record never written to disk; missing hash returns None |
 | BLK-005 | gap | Batch retrieval with multi_get for cache misses | Unit: all-cache-hit path; all-miss path uses single multi_get; mixed hit/miss; verify ordering preserved; verify cache populated for misses |
 | BLK-006 | gap | Prefetch sequential blocks via readahead iterator on CF_CANONICAL | Integration: store range of canonical blocks, stream and verify order; benchmark readahead vs individual reads; verify configurable readahead_size |
