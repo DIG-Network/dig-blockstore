@@ -208,14 +208,8 @@ fn test_no_double_training_after_dictionary_installed() {
     let chain = build_chain(DICT_TRAINING_THRESHOLD as usize + 5);
     fill_blocks_up_to(&store, &chain, DICT_TRAINING_THRESHOLD as usize);
     let dict_before = read_meta_zstd_dict(path.as_path()).expect("dict");
-    for block in chain
-        .iter()
-        .skip(DICT_TRAINING_THRESHOLD as usize)
-    {
-        assert!(
-            store.put(block, true).expect("put ok"),
-            "row must be novel"
-        );
+    for block in chain.iter().skip(DICT_TRAINING_THRESHOLD as usize) {
+        assert!(store.put(block, true).expect("put ok"), "row must be novel");
     }
     let dict_after = read_meta_zstd_dict(path.as_path()).expect("dict still present");
     assert_eq!(
@@ -231,10 +225,7 @@ fn test_mixed_mode_reads_all_round_trip() {
     let store = BlockStore::open(ser005_config(path.clone())).expect("open");
     let chain = build_chain(DICT_TRAINING_THRESHOLD as usize + 3);
     fill_blocks_up_to(&store, &chain, DICT_TRAINING_THRESHOLD as usize);
-    for block in chain
-        .iter()
-        .skip(DICT_TRAINING_THRESHOLD as usize)
-    {
+    for block in chain.iter().skip(DICT_TRAINING_THRESHOLD as usize) {
         assert!(
             store.put(block, true).expect("put"),
             "post-training extension must remain idempotent on duplicates=false insert path"

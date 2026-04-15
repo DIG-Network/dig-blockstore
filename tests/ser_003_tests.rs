@@ -23,9 +23,7 @@ use std::io::Cursor;
 use chia_protocol::Bytes32;
 use chia_traits::Streamable;
 use dig_block::L2Block;
-use dig_blockstore::{
-    block_from_wire_bytes, block_to_wire_bytes, BlockStore, BlockStoreError,
-};
+use dig_blockstore::{block_from_wire_bytes, block_to_wire_bytes, BlockStore, BlockStoreError};
 
 use common::{test_block, test_config};
 

@@ -41,7 +41,6 @@ pub fn block_to_wire_bytes(block: &L2Block) -> Result<Vec<u8>, BlockStoreError> 
 ///
 /// **Errors:** Malformed frames map to [`BlockStoreError::Serialization`] (never [`BlockStoreError::Compression`]).
 pub fn block_from_wire_bytes(bytes: &[u8]) -> Result<L2Block, BlockStoreError> {
-    L2Block::from_bytes(bytes).map_err(|e| {
-        BlockStoreError::Serialization(format!("wire deserialization failed: {e}"))
-    })
+    L2Block::from_bytes(bytes)
+        .map_err(|e| BlockStoreError::Serialization(format!("wire deserialization failed: {e}")))
 }

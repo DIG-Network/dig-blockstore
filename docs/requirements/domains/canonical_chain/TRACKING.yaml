@@ -57,7 +57,8 @@ items:
   - id: CAN-007
     section: "Canonical Chain"
     summary: "Chain Tip Tracking"
-    status: gap
+    status: implemented
     spec_ref: "docs/requirements/domains/canonical_chain/specs/CAN-007.md"
-    tests: []
-    notes: ""
+    tests:
+      - tests/can_007_tests.rs
+    notes: "height() accessor, set_tip() writes META_TIP 40-byte encoding + updates RwLock; 8 tests"

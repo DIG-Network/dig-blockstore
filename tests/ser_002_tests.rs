@@ -61,7 +61,10 @@ fn test_round_trip_header_fields_match() {
     let header = test_header(7, ZERO_HASH);
     let bytes = BlockStore::serialize_header(&header).expect("serialize_header");
     let back = BlockStore::deserialize_header(&bytes).expect("deserialize_header");
-    assert_eq!(back, header, "PartialEq on L2BlockHeader must hold after bincode round-trip");
+    assert_eq!(
+        back, header,
+        "PartialEq on L2BlockHeader must hold after bincode round-trip"
+    );
 }
 
 #[test]
@@ -85,8 +88,8 @@ fn test_raw_bincode_decode_without_blockstore_helper() {
     // **Proves:** AC §3 — external `bincode::deserialize` on stored bytes succeeds (no decompression prelude).
     let header = test_header(3, Bytes32::default());
     let stored = BlockStore::serialize_header(&header).expect("serialize_header");
-    let decoded: L2BlockHeader =
-        bincode::deserialize(&stored).expect("direct bincode::deserialize must succeed on CF_HEADERS bytes");
+    let decoded: L2BlockHeader = bincode::deserialize(&stored)
+        .expect("direct bincode::deserialize must succeed on CF_HEADERS bytes");
     assert_eq!(decoded, header);
 }
 
@@ -117,7 +120,10 @@ fn test_truncated_bytes_yield_serialization_error() {
     // **Proves:** SER-002 test plan “corrupted input” — malformed bincode maps to [`BlockStoreError::Serialization`].
     let header = test_header(0, ZERO_HASH);
     let full = BlockStore::serialize_header(&header).expect("serialize_header");
-    assert!(full.len() > 8, "precondition: need room to truncate meaningfully");
+    assert!(
+        full.len() > 8,
+        "precondition: need room to truncate meaningfully"
+    );
     let truncated = &full[..full.len() - 8];
     let err = BlockStore::deserialize_header(truncated).expect_err("truncated bincode should fail");
     assert!(

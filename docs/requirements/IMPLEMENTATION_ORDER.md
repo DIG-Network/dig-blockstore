@@ -73,7 +73,7 @@ After completing a requirement: write tests, verify they pass, update TRACKING.y
 - [x] CAN-004 — set_canonical_batch (batch marking for reorg)
 - [ ] CAN-005 — extend_chain (store block + update canonical + update tip atomically)
 - [ ] CAN-006 — get_hash_by_height (O(1) mmap lookup, fallback to CF_CANONICAL)
-- [ ] CAN-007 — Chain tip tracking (tip, height, set_tip, atomic updates)
+- [x] CAN-007 — Chain tip tracking (tip, height, set_tip, atomic updates)
 
 ## Phase 7: Caching
 

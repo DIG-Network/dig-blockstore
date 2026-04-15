@@ -62,7 +62,10 @@ fn test_get_header_matches_put_block() {
     let store = BlockStore::open(test_config(path)).expect("open");
     let b = test_block(12, ZERO_HASH);
     store.put_block(&b, false).expect("put");
-    let h = store.get_header(&b.hash()).expect("get_header").expect("some");
+    let h = store
+        .get_header(&b.hash())
+        .expect("get_header")
+        .expect("some");
     assert_eq!(h, b.header);
 }
 

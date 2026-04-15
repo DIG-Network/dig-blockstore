@@ -25,13 +25,11 @@ mod common;
 use std::path::Path;
 
 use chia_protocol::Bytes32;
-use dig_block::BlockStatus;
 use dig_block::constants::ZERO_HASH;
+use dig_block::BlockStatus;
 use dig_blockstore::constants::ALL_COLUMN_FAMILIES;
 use dig_blockstore::encoding::height_key;
-use dig_blockstore::{
-    BlockStore, BlockStoreError, CF_CANONICAL, ERR_MUTATION_READ_ONLY,
-};
+use dig_blockstore::{BlockStore, BlockStoreError, CF_CANONICAL, ERR_MUTATION_READ_ONLY};
 
 use common::{build_chain, temp_blockstore_dir, test_block, test_config};
 
@@ -181,7 +179,9 @@ fn test_set_canonical_batch_read_only_rejected() {
         .expect_err("read-only must error");
     match err {
         BlockStoreError::Serialization(s) => assert!(
-            s.contains(ERR_MUTATION_READ_ONLY) || s.contains("read-only") || s.contains("read only"),
+            s.contains(ERR_MUTATION_READ_ONLY)
+                || s.contains("read-only")
+                || s.contains("read only"),
             "{s}"
         ),
         other => panic!("unexpected {other:?}"),

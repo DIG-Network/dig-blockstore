@@ -440,9 +440,79 @@ impl BlockStore {
         self.canonical_bin.write().disable();
     }
 
-    /// Current chain tip loaded from metadata / in-memory cache ([`CAN-007`](../docs/requirements/domains/canonical_chain/specs/CAN-007.md) preview).
+    /// Current chain tip — hash and height of the highest canonical block.
+    ///
+    /// Returns the in-memory cached copy loaded from [`META_TIP`](crate::META_TIP) at startup
+    /// and updated by [`BlockStore::set_tip`], [`BlockStore::init_genesis`], and future
+    /// `extend_chain` / `rollback_to_height` APIs.
+    ///
+    /// # Performance
+    ///
+    /// This is a hot-path accessor queried on every block ingestion for parent-hash validation.
+    /// The [`parking_lot::RwLock::read`] is lock-free on the uncontended fast path (~2-5ns).
+    /// No RocksDB I/O occurs.
+    ///
+    /// # Chia analogy
+    ///
+    /// Corresponds to `BlockStore.get_peak()` in Chia's `block_store.py`.
+    ///
+    /// **Requirement:** [`CAN-007`](../docs/requirements/domains/canonical_chain/specs/CAN-007.md).
     pub fn tip(&self) -> Option<ChainTip> {
         *self.tip.read()
+    }
+
+    /// Convenience accessor for the current canonical chain height.
+    ///
+    /// Returns `tip().map(|t| t.height)` — `None` when the store has no tip (before genesis),
+    /// `Some(0)` after genesis, `Some(n)` after extending to height `n`.
+    ///
+    /// **Requirement:** [`CAN-007`](../docs/requirements/domains/canonical_chain/specs/CAN-007.md) § Accessors.
+    #[must_use]
+    pub fn height(&self) -> Option<u64> {
+        self.tip().map(|t| t.height)
+    }
+
+    /// Persist a new chain tip to [`CF_METADATA`](crate::CF_METADATA) / [`META_TIP`](crate::META_TIP)
+    /// and update the in-memory cache.
+    ///
+    /// # Encoding
+    ///
+    /// The value written is exactly 40 bytes: `hash (32 bytes, raw Bytes32) || height (8 bytes, little-endian u64)`.
+    /// This matches [`ChainTip::to_bytes()`](crate::ChainTip::to_bytes) and the
+    /// [`TYP-006`](../docs/requirements/domains/storage_types/specs/TYP-006.md) wire format.
+    ///
+    /// # Ordering
+    ///
+    /// RocksDB write is performed **before** updating the in-memory `RwLock`. If the write
+    /// fails, the in-memory tip remains unchanged (no stale state visible to concurrent readers).
+    ///
+    /// # Errors
+    ///
+    /// - [`BlockStoreError::Serialization`] with [`ERR_MUTATION_READ_ONLY`](crate::ERR_MUTATION_READ_ONLY)
+    ///   when called on a read-only handle.
+    /// - [`BlockStoreError::RocksDb`] on write failure.
+    ///
+    /// # Update points ([`CAN-007`](../docs/requirements/domains/canonical_chain/specs/CAN-007.md))
+    ///
+    /// | Operation | New Tip |
+    /// |-----------|---------|
+    /// | `extend_chain` (CAN-005) | Newly added block |
+    /// | `rollback_to_height` (ROR-001) | Block at target height |
+    /// | `apply_reorg` (ROR-003) | Last block in new chain |
+    /// | `init_genesis` (STR-004) | Genesis block (height 0) |
+    pub fn set_tip(&self, tip: ChainTip) -> Result<(), BlockStoreError> {
+        if self.read_only {
+            return Err(BlockStoreError::Serialization(
+                ERR_MUTATION_READ_ONLY.into(),
+            ));
+        }
+        let cf = self.cf(CF_METADATA)?;
+        // Write the 40-byte encoding to CF_METADATA before updating in-memory state.
+        // On failure, the in-memory tip remains at the old value (no stale state).
+        self.db
+            .put_cf(cf, META_TIP.as_bytes(), tip.to_bytes().as_slice())?;
+        *self.tip.write() = Some(tip);
+        Ok(())
     }
 
     /// Blocks successfully verified present while warming on last [`Self::open`] ([`STR-004`](../docs/requirements/domains/crate_structure/specs/STR-004.md) / [`CAC-006`](../docs/requirements/domains/caching/specs/CAC-006_cache_warming_on_startup.md)).
@@ -1146,7 +1216,9 @@ impl BlockStore {
         }
         self.db.write(batch)?;
         for (hash, record) in &validated {
-            self.canonical_bin.write().extend_write(record.height, hash)?;
+            self.canonical_bin
+                .write()
+                .extend_write(record.height, hash)?;
             if let Some(r) = self.record_cache.lock().get_mut(hash) {
                 r.in_canonical_chain = true;
             } else {

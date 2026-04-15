@@ -80,8 +80,7 @@ fn assert_zstd_dictionary_round_trip(data: &[u8], dict: &[u8], max_out: usize) {
     let mut compressor =
         zstd::bulk::Compressor::with_dictionary(ZSTD_COMPRESSION_LEVEL, dict).expect("compressor");
     let compressed = compressor.compress(data).expect("compress with dict");
-    let mut decompressor =
-        zstd::bulk::Decompressor::with_dictionary(dict).expect("decompressor");
+    let mut decompressor = zstd::bulk::Decompressor::with_dictionary(dict).expect("decompressor");
     let out = decompressor
         .decompress(compressed.as_slice(), max_out)
         .expect("decompress with dict");
@@ -192,7 +191,11 @@ fn test_hash_invariance_with_trained_dictionary_override() {
     let h0 = block.hash();
     let raw = store.serialize_block(&block).expect("serialize with dict");
     let back = store.deserialize_block(&raw).expect("deserialize");
-    assert_eq!(h0, back.hash(), "hash invariance (dictionary zstd pipeline)");
+    assert_eq!(
+        h0,
+        back.hash(),
+        "hash invariance (dictionary zstd pipeline)"
+    );
 }
 
 #[test]

@@ -179,9 +179,11 @@ impl CanonicalDenseFile {
             self.file.set_len(need as u64).map_err(|e| {
                 BlockStoreError::Serialization(format!("canonical.bin set_len: {e}"))
             })?;
-            self.mmap = Some(unsafe { MmapOptions::new().len(need).map_mut(&self.file) }.map_err(|e| {
-                BlockStoreError::Serialization(format!("canonical.bin remap after extend: {e}"))
-            })?);
+            self.mmap = Some(
+                unsafe { MmapOptions::new().len(need).map_mut(&self.file) }.map_err(|e| {
+                    BlockStoreError::Serialization(format!("canonical.bin remap after extend: {e}"))
+                })?,
+            );
         }
         let o = (height as usize) * 32;
         self.mmap_active_mut()[o..o + 32].copy_from_slice(hash.as_ref());
@@ -200,9 +202,11 @@ impl CanonicalDenseFile {
         self.file.set_len(new_len as u64).map_err(|e| {
             BlockStoreError::Serialization(format!("canonical.bin truncate set_len: {e}"))
         })?;
-        self.mmap = Some(unsafe { MmapOptions::new().len(new_len).map_mut(&self.file) }.map_err(|e| {
-            BlockStoreError::Serialization(format!("canonical.bin truncate remap: {e}"))
-        })?);
+        self.mmap = Some(
+            unsafe { MmapOptions::new().len(new_len).map_mut(&self.file) }.map_err(|e| {
+                BlockStoreError::Serialization(format!("canonical.bin truncate remap: {e}"))
+            })?,
+        );
         Ok(())
     }
 }
