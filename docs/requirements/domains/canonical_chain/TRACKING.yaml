@@ -23,10 +23,11 @@ items:
   - id: CAN-003
     section: "Canonical Chain"
     summary: "set_canonical"
-    status: gap
+    status: implemented
     spec_ref: "docs/requirements/domains/canonical_chain/specs/CAN-003.md"
-    tests: []
-    notes: ""
+    tests:
+      - tests/can_003_tests.rs
+    notes: "BlockStore::set_canonical; CF first then mmap then record_cache.in_canonical_chain"
 
   - id: CAN-004
     section: "Canonical Chain"

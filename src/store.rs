@@ -63,6 +63,7 @@
 //! - [`BLK-014`](../docs/requirements/domains/block_storage/specs/BLK-014.md) — `get_blocks_in_range` and sync `get_block_by_height` over [`CF_CANONICAL`].
 //! - [`BLK-015`](../docs/requirements/domains/block_storage/specs/BLK-015.md) — `get_records_in_range` / `get_record_by_height` (header-derived, no block bodies).
 //! - [`CAN-001`](../docs/requirements/domains/canonical_chain/specs/CAN-001.md) — dual-layer canonical index (`canonical.bin` + [`CF_CANONICAL`]).
+//! - [`CAN-003`](../docs/requirements/domains/canonical_chain/specs/CAN-003.md) — [`set_canonical`](BlockStore::set_canonical) for existing stored blocks.
 //! - [`SER-001`](../docs/requirements/domains/serialization/specs/SER-001.md) — bincode + zstd block serialization.
 //! - [`SER-002`](../docs/requirements/domains/serialization/specs/SER-002.md) — bincode-only header serialization.
 //! - [`SER-005`](../docs/requirements/domains/serialization/specs/SER-005.md) — dictionary training and persistence.
@@ -1064,6 +1065,43 @@ impl BlockStore {
     #[inline]
     pub fn put(&self, block: &L2Block, canonical: bool) -> Result<bool, BlockStoreError> {
         self.put_block(block, canonical)
+    }
+
+    /// **[`CAN-003`](../docs/requirements/domains/canonical_chain/specs/CAN-003.md)** — Mark an **already stored** block as canonical at its header height.
+    ///
+    /// **Algorithm (normative order — durable first):**
+    /// 1. [`Self::get_record`] to prove the block is known (header row or cache); on miss → [`BlockStoreError::BlockNotInStore`].
+    /// 2. [`DB::put_cf`](rocksdb::DB::put_cf) on [`CF_CANONICAL`] with [`height_key`](crate::encoding::height_key)(`height`) → [`hash_key`](crate::encoding::hash_key)(`hash`).
+    /// 3. `canonical.bin` update via the same path as [`Self::put_block`] (`canonical_bin` + [`CanonicalDenseFile::write_hash`](crate::canonical::mmap::CanonicalDenseFile::write_hash)); skipped when mmap acceleration is disabled (reopen rebuilds from CF).
+    /// 4. Set [`BlockRecord::in_canonical_chain`](crate::types::BlockRecord::in_canonical_chain) = `true` in [`Self::record_cache`] (record remains RAM-only per [`TYP-004`](../docs/requirements/domains/storage_types/specs/TYP-004.md)) — **does not** change [`BlockRecord::status`](crate::types::BlockRecord::status); operators may still use [`Self::update_status`](Self::update_status) for lifecycle.
+    ///
+    /// **Idempotency:** Re-calling with the same hash overwrites CF/mmap with identical bytes and leaves the record flag `true` ([`CAN-003`](../docs/requirements/domains/canonical_chain/specs/CAN-003.md) § Idempotency).
+    ///
+    /// **Height collisions:** A second call for a **different** hash at the same height overwrites the height index (reorg staging); both blocks must exist in the store.
+    ///
+    /// **Read-only:** [`BlockStoreError::Serialization`] with [`ERR_MUTATION_READ_ONLY`](crate::error::ERR_MUTATION_READ_ONLY) — same contract as [`Self::put_block`].
+    pub fn set_canonical(&self, hash: &Bytes32) -> Result<(), BlockStoreError> {
+        if self.read_only {
+            return Err(BlockStoreError::Serialization(
+                ERR_MUTATION_READ_ONLY.into(),
+            ));
+        }
+        let Some(record) = self.get_record(hash)? else {
+            return Err(BlockStoreError::BlockNotInStore(*hash));
+        };
+        let height = record.height;
+        let cf = self.cf(CF_CANONICAL)?;
+        self.db
+            .put_cf(cf, height_key(height), hash_key(hash).as_slice())?;
+        self.canonical_bin.write().extend_write(height, hash)?;
+        if let Some(r) = self.record_cache.lock().get_mut(hash) {
+            r.in_canonical_chain = true;
+        } else {
+            let mut r = record;
+            r.in_canonical_chain = true;
+            self.record_cache.lock().insert(*hash, r);
+        }
+        Ok(())
     }
 
     /// **[`BLK-009`](../docs/requirements/domains/block_storage/specs/BLK-009.md)** — Persist an [`AttestedBlock`] under the block’s hash key.
