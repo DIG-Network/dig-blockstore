@@ -1293,6 +1293,62 @@ impl BlockStore {
         Ok(())
     }
 
+    /// Primary block ingestion API for normal chain-following operation.
+    ///
+    /// Combines three operations into one call:
+    /// 1. **Store** — [`Self::put`] writes body to `CF_BLOCKS`, header to `CF_HEADERS`,
+    ///    and height→hash to `CF_CANONICAL` (canonical=true).
+    /// 2. **Tip advance** — [`Self::set_tip`] persists the new chain peak to `CF_METADATA`
+    ///    and updates the in-memory `RwLock<Option<ChainTip>>`.
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(true)` — block was novel; stored, canonicalized, and tip advanced.
+    /// - `Ok(false)` — block hash was already in the store (duplicate); no changes made.
+    ///
+    /// # Atomicity ([`CAN-005`](../docs/requirements/domains/canonical_chain/specs/CAN-005.md))
+    ///
+    /// The individual operations are not wrapped in a single RocksDB transaction, but the
+    /// ordering ensures safe crash recovery:
+    /// - Crash after `put` but before `set_tip`: block is stored and canonical, but tip
+    ///   is stale. On restart, tip can be corrected by scanning CF_CANONICAL.
+    /// - The duplicate check via [`has_block`](Self::has_block) makes re-ingestion safe.
+    ///
+    /// # Chia analogy
+    ///
+    /// Corresponds to the storage portion of `Blockchain.receive_block` →
+    /// `BlockStore.add_full_block` in Chia, where the block is stored, the peak is
+    /// updated, and the height map is advanced.
+    ///
+    /// # Errors
+    ///
+    /// - [`BlockStoreError::Serialization`] with [`ERR_MUTATION_READ_ONLY`] on read-only handles.
+    /// - RocksDB or compression errors from the underlying `put` / `set_tip` calls.
+    pub fn extend_chain(&self, block: &L2Block) -> Result<bool, BlockStoreError> {
+        let hash = block.hash();
+
+        // Duplicate detection: has_block checks cache first, then RocksDB key existence
+        // (no deserialization). Matches Chia’s INSERT OR IGNORE semantics.
+        if self.has_block(&hash)? {
+            return Ok(false);
+        }
+
+        // Store block body + header + canonical index entry in one WriteBatch.
+        // `put(block, true)` handles CF_BLOCKS, CF_HEADERS, CF_CANONICAL, canonical.bin,
+        // and all cache inserts (block_cache, header_cache, record_cache).
+        self.put(block, true)?;
+
+        // Advance the chain tip. This is a separate RocksDB write (not in the same
+        // WriteBatch as put), but the ordering is safe for crash recovery — see
+        // CAN-005 spec § Atomicity Considerations.
+        self.set_tip(ChainTip {
+            hash,
+            height: block.height(),
+        })?;
+
+        Ok(true)
+    }
+
     /// **[`BLK-009`](../docs/requirements/domains/block_storage/specs/BLK-009.md)** — Persist an [`AttestedBlock`] under the block’s hash key.
     ///
     /// **Key:** [`hash_key`](crate::encoding::hash_key)(`hash`) — raw 32 bytes in [`CF_ATTESTED`] ([`KEY-001`](../docs/requirements/domains/key_encoding/specs/KEY-001_hash_keys.md)), identical key shape to [`CF_BLOCKS`] / [`CF_HEADERS`].

@@ -71,7 +71,7 @@ After completing a requirement: write tests, verify they pass, update TRACKING.y
 - [x] CAN-002 — canonical.bin memory-mapped file (dense array of 32-byte hashes)
 - [x] CAN-003 — set_canonical (mark existing block as canonical, update index)
 - [x] CAN-004 — set_canonical_batch (batch marking for reorg)
-- [ ] CAN-005 — extend_chain (store block + update canonical + update tip atomically)
+- [x] CAN-005 — extend_chain (store block + update canonical + update tip atomically)
 - [x] CAN-006 — get_hash_by_height (O(1) mmap lookup, fallback to CF_CANONICAL)
 - [x] CAN-007 — Chain tip tracking (tip, height, set_tip, atomic updates)
 
