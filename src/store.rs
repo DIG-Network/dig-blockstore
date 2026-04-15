@@ -4,16 +4,18 @@
 //! - Owns column families in [`crate::constants`] ([`STR-004`](../docs/requirements/domains/crate_structure/specs/STR-004.md)).
 //! - Block bodies: `bincode` + zstd ([`SER-001`](../docs/requirements/domains/serialization/specs/SER-001.md)); headers: `bincode` only ([`SER-002`](../docs/requirements/domains/serialization/specs/SER-002.md)).
 //! - Tip / genesis metadata: [`crate::constants::META_TIP`], [`crate::constants::META_GENESIS_HASH`].
+//! - [`BlockRecord`](crate::BlockRecord) cache: in-memory only ([`BLK-001`](../docs/requirements/domains/block_storage/specs/BLK-001.md), [`TYP-004`](../docs/requirements/domains/storage_types/specs/TYP-004.md)).
 //!
 //! **Spec:** `docs/resources/SPEC.md` §15.1 (constructors), §16 (crate boundary).
 
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use chia_protocol::Bytes32;
-use dig_block::{L2Block, L2BlockHeader};
-use parking_lot::RwLock;
+use dig_block::{BlockStatus, L2Block, L2BlockHeader};
+use parking_lot::{Mutex, RwLock};
 use rand::seq::SliceRandom;
 use rocksdb::{IteratorMode, Options, WriteBatch, DB};
 
@@ -27,7 +29,7 @@ use crate::error::{
     BlockStoreError, ERR_INIT_GENESIS_ALREADY_INITIALIZED, ERR_INIT_GENESIS_READ_ONLY,
     ERR_MUTATION_READ_ONLY, ERR_OPEN_READONLY_PATH_MISSING_PREFIX,
 };
-use crate::types::ChainTip;
+use crate::types::{BlockRecord, ChainTip};
 use crate::BlockStoreConfig;
 
 /// Primary handle for all block persistence APIs.
@@ -49,6 +51,11 @@ pub struct BlockStore {
     /// [`DICT_TRAINING_THRESHOLD`](crate::constants::DICT_TRAINING_THRESHOLD) while keeping [`BlockStore`] on an
     /// immutable `&self` API surface (matches `put`-style ergonomics slated for [`BLK-001`](../docs/requirements/domains/block_storage/specs/BLK-001.md)).
     zstd_dict: RwLock<Option<Arc<Vec<u8>>>>,
+    /// [`BlockRecord`] rows derived on write; **never** persisted ([`BLK-001`](../docs/requirements/domains/block_storage/specs/BLK-001.md), [`CAC-003`](../docs/requirements/domains/caching/specs/CAC-003.md) precursor).
+    ///
+    /// **Concurrency:** [`parking_lot::Mutex`] keeps inserts from [`Self::put_block`] / [`Self::init_genesis`] and
+    /// lookups from [`Self::get_record`] safe without `&mut self`.
+    record_cache: Mutex<HashMap<Bytes32, BlockRecord>>,
 }
 
 impl BlockStore {
@@ -89,6 +96,7 @@ impl BlockStore {
             use_compression_dict,
             max_decompressed_block_bytes,
             zstd_dict: RwLock::new(zstd_dict),
+            record_cache: Mutex::new(HashMap::new()),
         })
     }
 
@@ -127,6 +135,7 @@ impl BlockStore {
             use_compression_dict,
             max_decompressed_block_bytes,
             zstd_dict: RwLock::new(zstd_dict),
+            record_cache: Mutex::new(HashMap::new()),
         })
     }
 
@@ -173,6 +182,8 @@ impl BlockStore {
         batch.put_cf(meta, META_GENESIS_HASH.as_bytes(), hash.as_ref());
         self.db.write(batch)?;
         *self.tip.write() = Some(tip);
+        let record = BlockRecord::from_header(&block.header, BlockStatus::Validated);
+        self.record_cache.lock().insert(hash, record);
         self.maybe_train_dictionary()?;
         Ok(())
     }
@@ -272,20 +283,20 @@ impl BlockStore {
         Ok(Some(self.deserialize_block(&raw)?))
     }
 
-    /// **[`BLK-001`](../docs/requirements/domains/block_storage/specs/BLK-001.md)** — Store a full block:
-    /// zstd payload → [`CF_BLOCKS`], bincode header → [`CF_HEADERS`], optional height index → [`CF_CANONICAL`].
+    /// **[`BLK-001`](../docs/requirements/domains/block_storage/specs/BLK-001.md)** — Primary name in
+    /// [`IMPLEMENTATION_ORDER.md`](../docs/requirements/IMPLEMENTATION_ORDER.md) Phase 5.
+    ///
+    /// **Pipeline:** zstd payload → [`CF_BLOCKS`], bincode header → [`CF_HEADERS`], optional height index →
+    /// [`CF_CANONICAL`]; [`BlockRecord`] is derived with [`BlockStatus::Validated`] and stored only in
+    /// [`Self::record_cache`] ([`TYP-004`](../docs/requirements/domains/storage_types/specs/TYP-004.md) persistence rule).
     ///
     /// **Idempotency:** If the block hash already exists in `CF_BLOCKS`, returns `Ok(false)` and performs no writes
     /// ([`start.md`](../docs/prompt/start.md) hard requirement §9).
     ///
-    /// **[`SER-005`](../../docs/requirements/domains/serialization/specs/SER-005.md):** A successful insert that makes
-    /// [`Self::block_count`] reach [`DICT_TRAINING_THRESHOLD`] triggers **one-time** dictionary training (when
-    /// [`BlockStoreConfig::use_compression_dict`](crate::BlockStoreConfig) is `true`). The in-Rust name `put` matches
-    /// the BLK-001 spec snippet; future docs may alias `put_block`.
-    ///
-    /// **Cache:** [`BlockRecord`] in-memory cache ([`BLK-001`]) is not wired yet; callers rely on [`Self::get_block`]
-    /// deserialization until [`CAC-003`](../docs/requirements/domains/caching/specs/CAC-003.md).
-    pub fn put(&self, block: &L2Block, canonical: bool) -> Result<bool, BlockStoreError> {
+    /// **[`SER-005`](../docs/requirements/domains/serialization/specs/SER-005.md):** A successful insert that makes
+    /// [`Self::block_count`] reach [`DICT_TRAINING_THRESHOLD`] triggers **one-time** dictionary training when
+    /// [`BlockStoreConfig::use_compression_dict`](crate::BlockStoreConfig) is `true`.
+    pub fn put_block(&self, block: &L2Block, canonical: bool) -> Result<bool, BlockStoreError> {
         if self.read_only {
             return Err(BlockStoreError::Serialization(
                 ERR_MUTATION_READ_ONLY.into(),
@@ -307,8 +318,38 @@ impl BlockStore {
             batch.put_cf(cf_c, height_key(block.height()), hash_key(&hash).as_slice());
         }
         self.db.write(batch)?;
+        let record = BlockRecord::from_header(&block.header, BlockStatus::Validated);
+        self.record_cache.lock().insert(hash, record);
         self.maybe_train_dictionary()?;
         Ok(true)
+    }
+
+    /// Alias for [`Self::put_block`] — matches the BLK-001 normative snippet name `put` ([`NORMATIVE.md` § BLK-001](../docs/requirements/domains/block_storage/NORMATIVE.md)).
+    #[inline]
+    pub fn put(&self, block: &L2Block, canonical: bool) -> Result<bool, BlockStoreError> {
+        self.put_block(block, canonical)
+    }
+
+    /// Look up [`BlockRecord`] by hash: **cache first**, then [`CF_HEADERS`] + [`BlockRecord::from_header`] on miss
+    /// ([`BLK-004`](../docs/requirements/domains/block_storage/specs/BLK-004.md) will extend status / eviction policy).
+    ///
+    /// **Read-only stores:** Cache starts empty; the first hit populates from persisted headers without mutating RocksDB.
+    pub fn get_record(&self, hash: &Bytes32) -> Result<Option<BlockRecord>, BlockStoreError> {
+        {
+            let guard = self.record_cache.lock();
+            if let Some(r) = guard.get(hash) {
+                return Ok(Some(r.clone()));
+            }
+        }
+        let cf = self.cf(CF_HEADERS)?;
+        let Some(bytes) = self.db.get_cf(cf, hash_key(hash).as_slice())? else {
+            return Ok(None);
+        };
+        let header = Self::deserialize_header(&bytes)?;
+        let record = BlockRecord::from_header(&header, BlockStatus::Validated);
+        let mut guard = self.record_cache.lock();
+        guard.insert(*hash, record.clone());
+        Ok(Some(record))
     }
 
     /// Count blocks persisted in [`CF_BLOCKS`] ([`SER-005`](../docs/requirements/domains/serialization/specs/SER-005.md) threshold).

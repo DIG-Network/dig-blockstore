@@ -2,7 +2,7 @@
 
 | ID | Status | Summary | Verification Approach |
 |----|--------|---------|----------------------|
-| BLK-001 | gap | Store block with zstd compression, header, record cache, canonical mapping; idempotent | Unit: round-trip put/get; put duplicate returns false; verify CF_BLOCKS, CF_HEADERS, CF_CANONICAL entries; verify record cache populated |
+| BLK-001 | done | Store block with zstd compression, header, record cache, canonical mapping; idempotent | Integration: `tests/blk_001_tests.rs` — round-trip hash, idempotent CF_BYTES stable, zstd/bincode CF layout, get_record vs from_header, canonical on/off |
 | BLK-002 | gap | Get block by hash with cache, zstd dictionary fallback, bincode deserialization | Unit: cache hit path (mock cache); cache miss path with dictionary decompression; fallback to plain zstd; missing hash returns None |
 | BLK-003 | gap | Get header by hash with cache, no decompression | Unit: cache hit path; cache miss read-through from CF_HEADERS; verify no decompression attempted; missing hash returns None |
 | BLK-004 | gap | Get record by hash, derived from header, never persisted | Unit: cache hit path; cache miss derives from header via from_header(); verify record never written to disk; missing hash returns None |

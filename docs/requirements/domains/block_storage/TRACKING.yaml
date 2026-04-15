@@ -5,8 +5,9 @@ crate: dig-blockstore
 items:
   - id: BLK-001
     title: Store Block (put)
-    status: gap
+    status: done
     spec_ref: "5.1"
+    notes: "BlockStore::put_block + put alias; record_cache Mutex; get_record (cache + CF_HEADERS miss); init_genesis seeds cache; tests/blk_001_tests.rs"
 
   - id: BLK-002
     title: Get Block by Hash (get_block)
