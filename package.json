@@ -1,0 +1,7 @@
+{
+  "name": "dig-blockstore",
+  "private": true,
+  "devDependencies": {
+    "gitnexus": "^1.6.1"
+  }
+}
