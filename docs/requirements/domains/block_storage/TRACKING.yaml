@@ -29,8 +29,9 @@ items:
 
   - id: BLK-005
     title: Batch Retrieval (get_blocks_by_hash)
-    status: gap
+    status: done
     spec_ref: "5.3"
+    notes: "get_blocks_by_hash: cache per index then single multi_get_cf for misses; cf_blocks_multi_get_batch_count; tests/blk_005_tests.rs"
 
   - id: BLK-006
     title: Prefetching for Sequential Access (stream_blocks_in_range)

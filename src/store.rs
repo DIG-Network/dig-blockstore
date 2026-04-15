@@ -5,7 +5,7 @@
 //! - Block bodies: `bincode` + zstd ([`SER-001`](../docs/requirements/domains/serialization/specs/SER-001.md)); headers: `bincode` only ([`SER-002`](../docs/requirements/domains/serialization/specs/SER-002.md)).
 //! - Tip / genesis metadata: [`crate::constants::META_TIP`], [`crate::constants::META_GENESIS_HASH`].
 //! - [`BlockRecord`](crate::BlockRecord) cache: in-memory only ([`BLK-001`](../docs/requirements/domains/block_storage/specs/BLK-001.md), [`BLK-004`](../docs/requirements/domains/block_storage/specs/BLK-004.md), [`TYP-004`](../docs/requirements/domains/storage_types/specs/TYP-004.md)).
-//! - Block body cache: [`crate::cache::sharded::ShardedBlockCache`] ([`BLK-002`](../docs/requirements/domains/block_storage/specs/BLK-002.md), [`CAC-001`](../docs/requirements/domains/caching/specs/CAC-001_sharded_block_cache.md)).
+//! - Block body cache: [`crate::cache::sharded::ShardedBlockCache`] ([`BLK-002`](../docs/requirements/domains/block_storage/specs/BLK-002.md), [`BLK-005`](../docs/requirements/domains/block_storage/specs/BLK-005.md) batch reads, [`CAC-001`](../docs/requirements/domains/caching/specs/CAC-001_sharded_block_cache.md)).
 //! - Header cache: [`crate::cache::sharded::ShardedHeaderCache`] ([`BLK-003`](../docs/requirements/domains/block_storage/specs/BLK-003.md), [`CAC-002`](../docs/requirements/domains/caching/specs/CAC-002_sharded_header_cache.md)).
 //!
 //! **Spec:** `docs/resources/SPEC.md` §15.1 (constructors), §16 (crate boundary).
@@ -64,7 +64,14 @@ pub struct BlockStore {
     /// Count of RocksDB `get_cf` calls against [`CF_BLOCKS`] issued from [`Self::get_block`] **after** a cache miss.
     ///
     /// **Rationale:** Proves AC §2 “no I/O on hit” in `tests/blk_002_tests.rs`; cheap atomic hot path on miss only.
+    /// **Not incremented** by [`Self::get_blocks_by_hash`] (that path uses [`DB::multi_get_cf`](rocksdb::DB::multi_get_cf); see [`Self::cf_blocks_multi_get_batch_count`]).
     cf_blocks_physical_gets: AtomicUsize,
+    /// Count of [`rocksdb::DB::multi_get_cf`] **batch invocations** from [`Self::get_blocks_by_hash`] when the input
+    /// contains at least one block-cache miss ([`BLK-005`](../docs/requirements/domains/block_storage/specs/BLK-005.md) AC §3).
+    ///
+    /// **Semantics:** Increments by **at most one per `get_blocks_by_hash` call** that performs RocksDB I/O (all misses
+    /// share one `multi_get_cf` round-trip). Stays at zero when every hash hits [`Self::block_cache`] or when `hashes` is empty.
+    cf_blocks_multi_get_batches: AtomicUsize,
     /// Sharded LRU of [`L2BlockHeader`] values ([`BLK-003`](../docs/requirements/domains/block_storage/specs/BLK-003.md)).
     ///
     /// **Separate** from [`Self::block_cache`] per BLK-003 implementation notes (tunables: [`BlockStoreConfig::header_cache_capacity`](crate::BlockStoreConfig::header_cache_capacity)).
@@ -121,6 +128,7 @@ impl BlockStore {
             record_cache: Mutex::new(HashMap::new()),
             block_cache,
             cf_blocks_physical_gets: AtomicUsize::new(0),
+            cf_blocks_multi_get_batches: AtomicUsize::new(0),
             header_cache,
             cf_headers_physical_gets: AtomicUsize::new(0),
         })
@@ -173,6 +181,7 @@ impl BlockStore {
             record_cache: Mutex::new(HashMap::new()),
             block_cache,
             cf_blocks_physical_gets: AtomicUsize::new(0),
+            cf_blocks_multi_get_batches: AtomicUsize::new(0),
             header_cache,
             cf_headers_physical_gets: AtomicUsize::new(0),
         })
@@ -337,6 +346,62 @@ impl BlockStore {
         Ok(Some(block))
     }
 
+    /// Batch-fetch blocks by hash ([`BLK-005`](../docs/requirements/domains/block_storage/specs/BLK-005.md)).
+    ///
+    /// **Algorithm**
+    /// 1. For each input hash in order, clone from [`Self::block_cache`] when present ([`CAC-001`](../docs/requirements/domains/caching/specs/CAC-001_sharded_block_cache.md)).
+    /// 2. Collect all cache misses; if non-empty, issue **one** [`rocksdb::DB::multi_get_cf`] over [`CF_BLOCKS`]
+    ///    (same `(cf, key)` pattern as [`Self::get_block`], [`SER-001`](../docs/requirements/domains/serialization/specs/SER-001.md) payloads).
+    /// 3. For each returned blob: [`Self::deserialize_block`], then insert into [`Self::block_cache`] and [`Self::header_cache`]
+    ///    (mirrors single-key read-through in [`Self::get_block`]).
+    ///
+    /// **Ordering:** Output `Vec` index `i` always corresponds to `hashes[i]` (per NORMATIVE BLK-005 §5).
+    ///
+    /// **Missing keys:** `Ok(None)` at that index; RocksDB row absent still consumes one slot in the `multi_get` result vector.
+    ///
+    /// **Empty input:** Returns `Ok(vec![])` without touching RocksDB.
+    ///
+    /// **Chunking:** Very large batches stay single-call for now ([`BLK-005.md`](../docs/requirements/domains/block_storage/specs/BLK-005.md) implementation notes); future work may split to bound peak memory.
+    pub fn get_blocks_by_hash(
+        &self,
+        hashes: &[Bytes32],
+    ) -> Result<Vec<Option<L2Block>>, BlockStoreError> {
+        let mut results: Vec<Option<L2Block>> = vec![None; hashes.len()];
+        let mut miss_indices: Vec<usize> = Vec::new();
+        for (i, hash) in hashes.iter().enumerate() {
+            if let Some(block) = self.block_cache.get_clone(hash) {
+                results[i] = Some(block);
+            } else {
+                miss_indices.push(i);
+            }
+        }
+        if miss_indices.is_empty() {
+            return Ok(results);
+        }
+        let cf = self.cf(CF_BLOCKS)?;
+        self.cf_blocks_multi_get_batches
+            .fetch_add(1, Ordering::Relaxed);
+        let keys: Vec<[u8; 32]> = miss_indices
+            .iter()
+            .map(|&idx| *hash_key(&hashes[idx]))
+            .collect();
+        let db_results = self
+            .db
+            .multi_get_cf(keys.iter().map(|k| (cf, k.as_slice())));
+        for (j, db_result) in db_results.into_iter().enumerate() {
+            let idx = miss_indices[j];
+            let maybe_raw = db_result?;
+            let Some(raw) = maybe_raw else {
+                continue;
+            };
+            let block = self.deserialize_block(&raw)?;
+            self.block_cache.insert(hashes[idx], block.clone());
+            self.header_cache.insert(hashes[idx], block.header.clone());
+            results[idx] = Some(block);
+        }
+        Ok(results)
+    }
+
     /// Drop a single entry from the in-memory block LRU — **no RocksDB writes** ([`BLK-002`](../docs/requirements/domains/block_storage/specs/BLK-002.md) test plan: simulate eviction).
     pub fn invalidate_block_cache_entry(&self, hash: &Bytes32) {
         self.block_cache.remove(hash);
@@ -347,6 +412,13 @@ impl BlockStore {
     /// **Tests / ops:** [`tests/blk_002_tests.rs`] asserts hits add zero; misses increment exactly once per call.
     pub fn cf_blocks_physical_get_count(&self) -> u64 {
         self.cf_blocks_physical_gets.load(Ordering::Relaxed) as u64
+    }
+
+    /// How many times [`Self::get_blocks_by_hash`] invoked [`rocksdb::DB::multi_get_cf`] because at least one hash missed
+    /// [`Self::block_cache`] ([`BLK-005`](../docs/requirements/domains/block_storage/specs/BLK-005.md); see [`tests/blk_005_tests.rs`]).
+    #[inline]
+    pub fn cf_blocks_multi_get_batch_count(&self) -> u64 {
+        self.cf_blocks_multi_get_batches.load(Ordering::Relaxed) as u64
     }
 
     /// Retrieve a block header by hash ([`BLK-003`](../docs/requirements/domains/block_storage/specs/BLK-003.md)).
