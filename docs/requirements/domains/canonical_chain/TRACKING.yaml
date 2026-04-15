@@ -14,10 +14,11 @@ items:
   - id: CAN-002
     section: "Canonical Chain"
     summary: "canonical.bin Memory-Mapped File"
-    status: gap
+    status: implemented
     spec_ref: "docs/requirements/domains/canonical_chain/specs/CAN-002.md"
-    tests: []
-    notes: ""
+    tests:
+      - tests/can_002_tests.rs
+    notes: "CanonicalDenseFile in src/canonical/mmap.rs; BlockStore uses it via CanonicalBin::Rw"
 
   - id: CAN-003
     section: "Canonical Chain"

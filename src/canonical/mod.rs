@@ -4,3 +4,5 @@
 
 pub mod index;
 pub mod mmap;
+
+pub use mmap::{CanonicalDenseFile, CANONICAL_BIN_FILE};
