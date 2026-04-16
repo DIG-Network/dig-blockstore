@@ -123,6 +123,14 @@ After completing a requirement: write tests, verify they pass, update TRACKING.y
 - [x] API-004 — Remove dead code stubs (CacheWarming, CompressionPipeline, BlockWritePipeline, SnapshotIo, CanonicalIndex) and update STR-002 tests
 - [x] API-005 — Fix README quick-start imports and add thread-safety docs
 
+## Phase 13: Module Extraction (move implementation from store.rs into domain modules)
+
+- [x] MOD-001 — Extract compression logic into src/compression.rs (serialize_block, deserialize_block, decompress_block_payload, train_dictionary, maybe_train_dictionary, init_dictionary, sample_block_bodies)
+- [ ] MOD-002 — Extract snapshot logic into src/snapshot.rs (export_snapshot, import_snapshot alongside SnapshotManifest)
+- [ ] MOD-003 — Extract cache warming logic into src/cache/warming.rs (warm_caches)
+- [ ] MOD-004 — Extract async pipeline logic into src/pipeline.rs (PipelineJob, put_pipelined, pipeline_sender, run_write_pipeline, pipeline_write_batch_count)
+- [ ] MOD-005 — Extract canonical chain index logic into src/canonical/index.rs (get_hash_by_height, set_canonical, set_canonical_batch, extend_chain, insert_canonical_height_cache)
+
 ---
 
 ## Summary
@@ -142,4 +150,5 @@ After completing a requirement: write tests, verify they pass, update TRACKING.y
 | 10 | Pruning | PRN-001 — PRN-005 (5) |
 | 11 | Snapshot | SNP-001 — SNP-004 (4) |
 | 12 | Public Interface | API-001 — API-005 (5) |
-| **Total** | | **77** |
+| 13 | Module Extraction | MOD-001 — MOD-005 (5) |
+| **Total** | | **82** |

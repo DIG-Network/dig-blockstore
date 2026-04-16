@@ -91,10 +91,10 @@ use rocksdb::{ColumnFamily, Direction, IteratorMode, Options, ReadOptions, Write
 use crate::cache::sharded::{ShardedBlockCache, ShardedHeaderCache, ShardedLruCache};
 use crate::canonical::mmap::CanonicalBin;
 use crate::cf_options;
+use crate::compression::resolve_zstd_dictionary;
 use crate::constants::{
     CF_ATTESTED, CF_BLOCKS, CF_CANONICAL, CF_CHECKPOINTS, CF_HEADERS, CF_METADATA,
-    DICT_TARGET_SIZE, DICT_TRAINING_THRESHOLD, META_GENESIS_HASH, META_MIN_HEIGHT, META_TIP,
-    META_ZSTD_DICT,
+    META_GENESIS_HASH, META_MIN_HEIGHT, META_TIP,
 };
 use crate::encoding::{decode_height_key, hash_key, height_key};
 use crate::error::{
@@ -128,77 +128,77 @@ type PipelineJob = (
 pub struct BlockStoreInner {
     /// RocksDB handle shared across all operations. Thread-safe via RocksDB's internal locking.
     /// All six column families ([`TYP-001`]) are created at open time.
-    db: Arc<DB>,
+    pub(crate) db: Arc<DB>,
     /// When `true`, all mutation APIs (`put_block`, `init_genesis`, [`BlockStore::put_attestation`](BlockStore::put_attestation)) return
     /// [`BlockStoreError::Serialization`] with [`ERR_MUTATION_READ_ONLY`].
     /// Set by [`BlockStore::open_readonly`]; cannot be toggled after construction.
-    read_only: bool,
+    pub(crate) read_only: bool,
     /// In-memory copy of the chain tip from [`META_TIP`] in [`CF_METADATA`].
     /// Updated atomically after [`BlockStore::init_genesis`] and future tip-advance APIs.
     /// Reads use [`RwLock::read`] (very cheap with parking_lot); writes are rare (new blocks).
-    tip: RwLock<Option<ChainTip>>,
+    pub(crate) tip: RwLock<Option<ChainTip>>,
     /// Count of blocks verified present during cache warming at last [`BlockStore::open`].
     /// Exposed via [`BlockStore::warm_blocks_loaded_count`] for startup diagnostics.
-    warm_blocks_loaded: AtomicUsize,
+    pub(crate) warm_blocks_loaded: AtomicUsize,
     /// Zstd level for [`BlockStore::serialize_block`] / plain fallback ([`SER-001`](../docs/requirements/domains/serialization/specs/SER-001.md) §6).
-    compression_level: i32,
+    pub(crate) compression_level: i32,
     /// When true and [`Self::zstd_dict`] is [`Some`], compress with dictionary ([`SER-005`](../docs/requirements/domains/serialization/specs/SER-005.md) precursor).
-    use_compression_dict: bool,
+    pub(crate) use_compression_dict: bool,
     /// Cap passed to [`zstd::bulk::Decompressor::decompress`] ([`SER-001`](../docs/requirements/domains/serialization/specs/SER-001.md) implementation notes).
-    max_decompressed_block_bytes: usize,
+    pub(crate) max_decompressed_block_bytes: usize,
     /// Trained dictionary loaded from [`META_ZSTD_DICT`] or [`BlockStoreConfig::zstd_dictionary_override`].
     ///
     /// **[`SER-005`](../docs/requirements/domains/serialization/specs/SER-005.md):** [`RwLock`] lets
     /// [`BlockStore::maybe_train_dictionary`] publish the first trained dictionary **after** the write that crosses
     /// [`DICT_TRAINING_THRESHOLD`](crate::constants::DICT_TRAINING_THRESHOLD) while keeping [`BlockStore`] on an
     /// immutable `&self` API surface (matches `put`-style ergonomics slated for [`BLK-001`](../docs/requirements/domains/block_storage/specs/BLK-001.md)).
-    zstd_dict: RwLock<Option<Arc<Vec<u8>>>>,
+    pub(crate) zstd_dict: RwLock<Option<Arc<Vec<u8>>>>,
     /// [`BlockRecord`] rows derived on write; **never** persisted ([`BLK-001`](../docs/requirements/domains/block_storage/specs/BLK-001.md), [`CAC-003`](../docs/requirements/domains/caching/specs/CAC-003.md) precursor).
     ///
     /// **Concurrency:** [`parking_lot::Mutex`] keeps inserts from [`BlockStore::put_block`] / [`BlockStore::init_genesis`] and
     /// lookups from [`BlockStore::get_record`] safe without `&mut self`.
-    record_cache: Mutex<HashMap<Bytes32, BlockRecord>>,
+    pub(crate) record_cache: Mutex<HashMap<Bytes32, BlockRecord>>,
     /// Sharded LRU of deserialized [`L2Block`] values ([`BLK-002`](../docs/requirements/domains/block_storage/specs/BLK-002.md)).
-    block_cache: Arc<ShardedBlockCache>,
+    pub(crate) block_cache: Arc<ShardedBlockCache>,
     /// Count of RocksDB `get_cf` calls against [`CF_BLOCKS`] issued from [`BlockStore::get_block`] **after** a cache miss.
     ///
     /// **Rationale:** Proves AC §2 “no I/O on hit” in `tests/blk_002_tests.rs`; cheap atomic hot path on miss only.
     /// **Not incremented** by [`BlockStore::get_blocks_by_hash`] (that path uses [`DB::multi_get_cf`](rocksdb::DB::multi_get_cf); see [`BlockStore::cf_blocks_multi_get_batch_count`]).
-    cf_blocks_physical_gets: AtomicUsize,
+    pub(crate) cf_blocks_physical_gets: AtomicUsize,
     /// Count of [`rocksdb::DB::multi_get_cf`] **batch invocations** from [`BlockStore::get_blocks_by_hash`] when the input
     /// contains at least one block-cache miss ([`BLK-005`](../docs/requirements/domains/block_storage/specs/BLK-005.md) AC §3).
     ///
     /// **Semantics:** Increments by **at most one per `get_blocks_by_hash` call** that performs RocksDB I/O (all misses
     /// share one `multi_get_cf` round-trip). Stays at zero when every hash hits [`BlockStore::block_cache`] or when `hashes` is empty.
-    cf_blocks_multi_get_batches: AtomicUsize,
+    pub(crate) cf_blocks_multi_get_batches: AtomicUsize,
     /// Count of [`DB::get_cf_opt`](rocksdb::DB::get_cf_opt) calls against [`CF_BLOCKS`] from [`StreamBlocksInRange`]
     /// ([`BLK-006`](../docs/requirements/domains/block_storage/specs/BLK-006.md)) after a block-cache miss.
     ///
     /// **Rationale:** Distinct from [`BlockStore::cf_blocks_physical_get_count`] ([`get_block`](BlockStore::get_block)) so tests can
     /// prove cache hits in a streamed range skip redundant block-blob reads ([`tests/blk_006_tests.rs`]).
-    cf_blocks_stream_physical_gets: AtomicUsize,
+    pub(crate) cf_blocks_stream_physical_gets: AtomicUsize,
     /// Copy of [`BlockStoreConfig::readahead_size`](crate::BlockStoreConfig::readahead_size) at open time ([`BLK-006`](../docs/requirements/domains/block_storage/specs/BLK-006.md) AC §4).
-    readahead_size: usize,
+    pub(crate) readahead_size: usize,
     /// Sharded LRU of [`L2BlockHeader`] values ([`BLK-003`](../docs/requirements/domains/block_storage/specs/BLK-003.md)).
     ///
     /// **Separate** from [`Self::block_cache`] per BLK-003 implementation notes (tunables: [`BlockStoreConfig::header_cache_capacity`](crate::BlockStoreConfig::header_cache_capacity)).
-    header_cache: Arc<ShardedHeaderCache>,
+    pub(crate) header_cache: Arc<ShardedHeaderCache>,
     /// Count of RocksDB `get_cf` calls against [`CF_HEADERS`] after **both** [`Self::header_cache`] and
     /// [`Self::record_cache`] miss — incremented by [`BlockStore::get_header`] and by [`BlockStore::get_record`] ([`BLK-003`](../docs/requirements/domains/block_storage/specs/BLK-003.md), [`BLK-004`](../docs/requirements/domains/block_storage/specs/BLK-004.md)).
-    cf_headers_physical_gets: AtomicUsize,
+    pub(crate) cf_headers_physical_gets: AtomicUsize,
     /// Max jobs per RocksDB [`WriteBatch`] flush ([`BlockStoreConfig::write_pipeline_batch_size`](crate::BlockStoreConfig::write_pipeline_batch_size)).
-    pipeline_batch_size: usize,
+    pub(crate) pipeline_batch_size: usize,
     /// Partial-batch flush timer ([`BlockStoreConfig::write_pipeline_flush_ms`](crate::BlockStoreConfig::write_pipeline_flush_ms)).
-    pipeline_flush_ms: u64,
+    pub(crate) pipeline_flush_ms: u64,
     /// Bounded channel depth ([`BlockStoreConfig::write_pipeline_channel_capacity`](crate::BlockStoreConfig::write_pipeline_channel_capacity)).
-    pipeline_channel_capacity: usize,
+    pub(crate) pipeline_channel_capacity: usize,
     /// Count of successful [`DB::write`](rocksdb::DB::write) calls issued **only** by the pipeline worker ([`tests/blk_008_tests.rs`]).
-    pipeline_write_batches: AtomicUsize,
+    pub(crate) pipeline_write_batches: AtomicUsize,
     /// Dense height→hash mmap sidecar (`canonical.bin`) kept in lockstep with [`CF_CANONICAL`] ([`CAN-001`](../docs/requirements/domains/canonical_chain/specs/CAN-001.md)).
     ///
     /// **Reads:** [`parking_lot::RwLock::read`] for [`Self::get_hash_by_height`] (hot path). **Writes:**
     /// [`RwLock::write`] after every successful RocksDB batch that touches the canonical index (`init_genesis`, [`BlockStore::put_block`], pipeline flush).
-    canonical_bin: RwLock<CanonicalBin>,
+    pub(crate) canonical_bin: RwLock<CanonicalBin>,
     /// In-memory height→hash cache for hot canonical heights ([`CAC-004`](../docs/requirements/domains/caching/specs/CAC-004_canonical_height_index_cache.md)).
     ///
     /// **BTreeMap** provides O(log n) lookup and ordered iteration for range queries.
@@ -208,16 +208,16 @@ pub struct BlockStoreInner {
     /// Loaded from CF_METADATA at startup; updated with `Release` ordering after prune succeeds.
     /// Shared with the compaction filter ([`PRN-003`]) when `enable_compaction_pruning` is true.
     /// The filter reads this with `Acquire` ordering; `prune_before_height` writes with `Release`.
-    min_retained_height_cached: Arc<AtomicU64>,
-    canonical_height_cache: RwLock<std::collections::BTreeMap<u64, Bytes32>>,
+    pub(crate) min_retained_height_cached: Arc<AtomicU64>,
+    pub(crate) canonical_height_cache: RwLock<std::collections::BTreeMap<u64, Bytes32>>,
     /// Max entries before the lowest-height entry is evicted from [`Self::canonical_height_cache`].
-    canonical_height_cache_capacity: usize,
+    pub(crate) canonical_height_cache_capacity: usize,
     /// Hash→height reverse lookup cache ([`CAC-005`](../docs/requirements/domains/caching/specs/CAC-005_hash_to_height_reverse_cache.md)).
     ///
     /// Sharded LRU with `u64` values (block height). Populated on `put_block`, header reads,
     /// and block reads. Used by `find_common_ancestor` and `set_canonical` to avoid header
     /// deserialization solely for height extraction.
-    hash_to_height_cache: Arc<ShardedLruCache<u64>>,
+    pub(crate) hash_to_height_cache: Arc<ShardedLruCache<u64>>,
 }
 
 /// Primary handle for all block persistence APIs.
@@ -246,9 +246,9 @@ pub struct BlockStoreInner {
 /// access to an existing database. After construction, call [`BlockStore::init_genesis`] once
 /// to initialize a new chain.
 pub struct BlockStore {
-    inner: Arc<BlockStoreInner>,
+    pub(crate) inner: Arc<BlockStoreInner>,
     /// Lazy bounded ingress for [`Self::put_pipelined`] — **not** stored on [`BlockStoreInner`] (see struct docs).
-    pipeline_tx: Arc<tokio::sync::Mutex<Option<mpsc::Sender<PipelineJob>>>>,
+    pub(crate) pipeline_tx: Arc<tokio::sync::Mutex<Option<mpsc::Sender<PipelineJob>>>>,
 }
 
 impl Clone for BlockStore {
@@ -619,98 +619,6 @@ impl BlockStore {
     ///
     /// **Errors:** [`BlockStoreError::Serialization`] — same variant as corrupt block payloads so upper
     /// layers can treat “bytes unusable” uniformly until ERR-* adds finer codes.
-    pub fn serialize_header(header: &L2BlockHeader) -> Result<Vec<u8>, BlockStoreError> {
-        bincode::serialize(header).map_err(|e| BlockStoreError::Serialization(e.to_string()))
-    }
-
-    /// Deserialize a header from [`CF_HEADERS`] bytes ([`SER-002`](../docs/requirements/domains/serialization/specs/SER-002.md)).
-    ///
-    /// **Read path:** raw bincode only — callers MUST NOT pass zstd-compressed payloads (those belong in [`CF_BLOCKS`]
-    /// via [`Self::deserialize_block`]).
-    pub fn deserialize_header(bytes: &[u8]) -> Result<L2BlockHeader, BlockStoreError> {
-        bincode::deserialize(bytes).map_err(|e| BlockStoreError::Serialization(e.to_string()))
-    }
-
-    /// Serialize then zstd-compress a block for [`CF_BLOCKS`] ([`SER-001`](../docs/requirements/domains/serialization/specs/SER-001.md)).
-    ///
-    /// **Pipeline:** [`bincode::serialize`] → [`zstd::bulk::Compressor::with_dictionary`] when
-    /// [`Self::use_compression_dict`] and a dictionary are present; otherwise [`zstd::encode_all`] (plain zstd).
-    ///
-    /// **Errors:** [`BlockStoreError::Serialization`] from bincode; [`BlockStoreError::Compression`] from zstd.
-    pub fn serialize_block(&self, block: &L2Block) -> Result<Vec<u8>, BlockStoreError> {
-        let raw = bincode::serialize(block)?;
-        if self.use_compression_dict {
-            let dict_guard = self.zstd_dict.read();
-            if let Some(dict) = dict_guard.as_ref() {
-                let mut compressor = zstd::bulk::Compressor::with_dictionary(
-                    self.compression_level,
-                    dict.as_slice(),
-                )
-                .map_err(|e| BlockStoreError::Compression(e.to_string()))?;
-                return compressor
-                    .compress(raw.as_slice())
-                    .map_err(BlockStoreError::compression_from_io);
-            }
-        }
-        zstd::encode_all(raw.as_slice(), self.compression_level)
-            .map_err(BlockStoreError::compression_from_io)
-    }
-
-    /// Reverse [`Self::serialize_block`] ([`SER-001`](../docs/requirements/domains/serialization/specs/SER-001.md)).
-    ///
-    /// **Fallback:** Dictionary decompress is attempted first when configured; on failure, plain
-    /// [`zstd::decode_all`] handles **pre-dictionary** payloads written before training ([`SER-005`](../docs/requirements/domains/serialization/specs/SER-005.md)).
-    ///
-    /// **Hash invariance:** Correct payloads MUST yield an [`L2Block`] whose [`L2Block::hash`] matches the original
-    /// pre-serialize block ([`SER-004`](../docs/requirements/domains/serialization/specs/SER-004.md); verified in `tests/ser_004_tests.rs`).
-    ///
-    /// **Errors:** Decompression failures map to [`BlockStoreError::Serialization`] so callers see a single
-    /// “payload unusable” surface for malformed CF_BYTES; bincode structural errors also use [`Serialization`](BlockStoreError::Serialization).
-    pub fn deserialize_block(&self, compressed: &[u8]) -> Result<L2Block, BlockStoreError> {
-        let raw = self.decompress_block_payload(compressed).map_err(|e| {
-            BlockStoreError::Serialization(format!("deserialize_block: decompress failed: {e}"))
-        })?;
-        bincode::deserialize(&raw).map_err(|e| BlockStoreError::Serialization(e.to_string()))
-    }
-
-    /// Decompress a raw zstd frame from [`CF_BLOCKS`] back to bincode bytes.
-    ///
-    /// # Fallback strategy ([`SER-005`])
-    ///
-    /// When dictionary mode is active, this method tries dictionary decompression first.
-    /// If that fails (because the payload was written *before* the dictionary was trained),
-    /// it falls back to plain [`zstd::decode_all`]. This two-phase approach ensures all
-    /// historical blocks remain readable after dictionary training—a critical invariant
-    /// since DIG does not re-encode existing blocks when a dictionary is installed.
-    ///
-    /// # Decompression bomb protection
-    ///
-    /// [`zstd::bulk::Decompressor::decompress`] accepts `max_decompressed_block_bytes` as
-    /// an upper bound on output size, preventing malicious payloads from exhausting memory.
-    /// The plain fallback path ([`zstd::decode_all`]) does not have this cap; future work
-    /// may wrap it similarly.
-    fn decompress_block_payload(&self, compressed: &[u8]) -> std::io::Result<Vec<u8>> {
-        if self.use_compression_dict {
-            if let Some(dict) = self.zstd_dict.read().as_ref() {
-                // Phase 1: attempt dictionary-aware decompression (post-training payloads).
-                let mut decompressor = zstd::bulk::Decompressor::with_dictionary(dict.as_slice())?;
-                return match decompressor.decompress(compressed, self.max_decompressed_block_bytes)
-                {
-                    Ok(bytes) => Ok(bytes),
-                    // Phase 2: dictionary decompression failed—payload is likely a pre-training
-                    // plain zstd frame. Fall back to standard decoding.
-                    Err(_) => zstd::decode_all(compressed),
-                };
-            }
-        }
-        // No dictionary configured or available: standard zstd decompression.
-        zstd::decode_all(compressed)
-    }
-
-    /// Retrieve a full block by hash ([`BLK-002`](../docs/requirements/domains/block_storage/specs/BLK-002.md)).
-    ///
-    /// **Order:** [`Self::block_cache`] (sharded LRU, [`CAC-001`](../docs/requirements/domains/caching/specs/CAC-001_sharded_block_cache.md))
-    /// → on miss, `get_cf` [`CF_BLOCKS`] → [`Self::deserialize_block`] (dictionary zstd with plain fallback per [`SER-005`](../docs/requirements/domains/serialization/specs/SER-005.md)).
     ///
     /// **Write path:** [`Self::put_block`] / [`Self::init_genesis`] insert fresh values so steady-state reads hit RAM.
     pub fn get_block(&self, hash: &Bytes32) -> Result<Option<L2Block>, BlockStoreError> {
@@ -2432,106 +2340,6 @@ impl BlockStore {
     ///
     /// **Operational note:** Implemented as a full-column scan — acceptable for the **rare** dictionary-training edge;
     /// production tipping paths should eventually cache this in [`CF_METADATA`](crate::CF_METADATA) if needed.
-    pub fn block_count(&self) -> Result<u64, BlockStoreError> {
-        let cf = self.cf(CF_BLOCKS)?;
-        let iter = self.db.iterator_cf(cf, IteratorMode::Start);
-        let mut n = 0u64;
-        for item in iter {
-            let (_k, _v) = item?;
-            n = n.saturating_add(1);
-        }
-        Ok(n)
-    }
-
-    /// **[`SER-005`](../docs/requirements/domains/serialization/specs/SER-005.md)** — Reload dictionary bytes from
-    /// [`META_ZSTD_DICT`] into memory after external maintenance (or to align with [`Self::train_dictionary`]
-    /// persistence).
-    ///
-    /// **Startup:** [`Self::open`] already embeds this via [`load_zstd_dict_from_db`]; public callers use
-    /// `init_dictionary` when a **second process** trains the dictionary or metadata is repaired online.
-    pub fn init_dictionary(&self) -> Result<(), BlockStoreError> {
-        let loaded = load_zstd_dict_from_db(&self.db, self.use_compression_dict)?;
-        *self.zstd_dict.write() = loaded;
-        Ok(())
-    }
-
-    /// Collect `sample_count` **uncompressed** bincode block bodies for [`zstd::dict::from_samples`].
-    ///
-    /// **Randomness:** Keys/values are shuffled with [`rand::thread_rng`] so training sees a representative slice of
-    /// the corpus, not a height-ordered prefix ([`SER-005`](../docs/requirements/domains/serialization/specs/SER-005.md) implementation notes).
-    fn sample_block_bodies(&self, sample_count: usize) -> Result<Vec<Vec<u8>>, BlockStoreError> {
-        let cf = self.cf(CF_BLOCKS)?;
-        let mut blobs: Vec<Vec<u8>> = Vec::new();
-        let iter = self.db.iterator_cf(cf, IteratorMode::Start);
-        for item in iter {
-            let (_key, value) = item?;
-            blobs.push(value.to_vec());
-        }
-        if blobs.len() < sample_count {
-            return Err(BlockStoreError::Serialization(format!(
-                "dictionary training: need at least {sample_count} blocks in {CF_BLOCKS}, have {}",
-                blobs.len()
-            )));
-        }
-        blobs.shuffle(&mut rand::thread_rng());
-        blobs.truncate(sample_count);
-        let mut samples = Vec::with_capacity(sample_count);
-        for compressed in blobs {
-            let raw = self.decompress_block_payload(&compressed).map_err(|e| {
-                BlockStoreError::Serialization(format!(
-                    "dictionary training sample decompress: {e}"
-                ))
-            })?;
-            samples.push(raw);
-        }
-        Ok(samples)
-    }
-
-    /// Train + persist a zstd dictionary; **idempotent** if [`META_ZSTD_DICT`] already contains bytes.
-    fn train_dictionary(&self) -> Result<Vec<u8>, BlockStoreError> {
-        let meta = self.cf(CF_METADATA)?;
-        if let Some(blob) = self.db.get_cf(meta, META_ZSTD_DICT.as_bytes())? {
-            if !blob.is_empty() {
-                return Ok(blob);
-            }
-        }
-        let n = DICT_TRAINING_THRESHOLD as usize;
-        let samples = self.sample_block_bodies(n)?;
-        let refs: Vec<&[u8]> = samples.iter().map(Vec::as_slice).collect();
-        let dict = zstd::dict::from_samples(&refs, DICT_TARGET_SIZE).map_err(|e| {
-            BlockStoreError::Serialization(format!("dictionary training failed: {e}"))
-        })?;
-        self.db
-            .put_cf(meta, META_ZSTD_DICT.as_bytes(), dict.as_slice())?;
-        Ok(dict)
-    }
-
-    /// If dictionary training is enabled, the live dictionary slot is empty, and [`Self::block_count`] is at or above
-    /// [`DICT_TRAINING_THRESHOLD`], train once and install into memory.
-    fn maybe_train_dictionary(&self) -> Result<(), BlockStoreError> {
-        if !self.use_compression_dict {
-            return Ok(());
-        }
-        if self.zstd_dict.read().is_some() {
-            return Ok(());
-        }
-        let meta = self.cf(CF_METADATA)?;
-        if self
-            .db
-            .get_cf(meta, META_ZSTD_DICT.as_bytes())?
-            .filter(|b| !b.is_empty())
-            .is_some()
-        {
-            self.init_dictionary()?;
-            return Ok(());
-        }
-        if self.block_count()? < DICT_TRAINING_THRESHOLD {
-            return Ok(());
-        }
-        let dict = self.train_dictionary()?;
-        *self.zstd_dict.write() = Some(Arc::new(dict));
-        Ok(())
-    }
 
     /// Async retrieval by hash ([`BLK-007`](../docs/requirements/domains/block_storage/specs/BLK-007.md) AC §1, §4, §5).
     ///
@@ -2600,7 +2408,7 @@ impl BlockStore {
     /// the `Option<&ColumnFamily>` to our error type. In practice this should never fail
     /// because [`BlockStore::open`] creates all six families via [`cf_options::column_family_descriptors`],
     /// but defensive coding prevents silent `None` dereferences if the CF list drifts.
-    fn cf(&self, name: &'static str) -> Result<&rocksdb::ColumnFamily, BlockStoreError> {
+    pub(crate) fn cf(&self, name: &'static str) -> Result<&rocksdb::ColumnFamily, BlockStoreError> {
         self.db
             .cf_handle(name)
             .ok_or_else(|| BlockStoreError::Serialization(format!("missing column family {name}")))
@@ -2920,52 +2728,6 @@ impl<'a> Iterator for StreamBlocksInRange<'a> {
 /// # Called by
 ///
 /// [`BlockStore::open`] and [`BlockStore::open_readonly`] during construction.
-fn resolve_zstd_dictionary(
-    db: &DB,
-    use_compression_dict: bool,
-    override_bytes: Option<Vec<u8>>,
-) -> Result<Option<Arc<Vec<u8>>>, BlockStoreError> {
-    if let Some(bytes) = override_bytes {
-        return if bytes.is_empty() {
-            Ok(None)
-        } else {
-            Ok(Some(Arc::new(bytes)))
-        };
-    }
-    load_zstd_dict_from_db(db, use_compression_dict)
-}
-
-/// Load the trained zstd dictionary from [`CF_METADATA`] / [`META_ZSTD_DICT`].
-///
-/// Returns `None` when:
-/// - `use_compression_dict` is `false` (feature disabled in config).
-/// - The [`META_ZSTD_DICT`] key does not exist (no training has occurred).
-/// - The stored blob is empty (edge case: metadata key exists but value is zero-length).
-///
-/// The returned `Arc<Vec<u8>>` is shared between the [`BlockStore`] field `zstd_dict`
-/// and all compress/decompress operations, avoiding per-call copies of the ~100 KB dictionary.
-///
-/// # Called by
-///
-/// [`resolve_zstd_dictionary`] (at open time) and [`BlockStore::init_dictionary`] (runtime reload).
-fn load_zstd_dict_from_db(
-    db: &DB,
-    use_compression_dict: bool,
-) -> Result<Option<Arc<Vec<u8>>>, BlockStoreError> {
-    if !use_compression_dict {
-        return Ok(None);
-    }
-    let meta = db
-        .cf_handle(CF_METADATA)
-        .ok_or_else(|| BlockStoreError::Serialization("missing CF_METADATA".into()))?;
-    let Some(blob) = db.get_cf(meta, META_ZSTD_DICT.as_bytes())? else {
-        return Ok(None);
-    };
-    if blob.is_empty() {
-        return Ok(None);
-    }
-    Ok(Some(Arc::new(blob)))
-}
 
 /// Load the current chain tip from [`CF_METADATA`] / [`META_TIP`].
 ///
