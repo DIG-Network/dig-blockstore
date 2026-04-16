@@ -574,43 +574,6 @@ impl BlockStore {
         self.warm_blocks_loaded.load(Ordering::Relaxed)
     }
 
-    /// Populate ALL in-memory caches by reading the most recent canonical blocks.
-    ///
-    /// # Algorithm ([`CAC-006`](../docs/requirements/domains/caching/specs/CAC-006_cache_warming_on_startup.md))
-    ///
-    /// Walks backward from the chain tip for up to `depth` heights. At each height,
-    /// calls [`Self::get_block_by_height`] and [`Self::get_record_by_height`] which
-    /// auto-populate block_cache, header_cache, record_cache, hash_to_height_cache,
-    /// and canonical_height_cache through their read-through paths.
-    ///
-    /// # Error handling
-    ///
-    /// Errors (corrupted blocks, missing entries) are silently skipped to ensure
-    /// `open()` always succeeds. The cache will have partial warmth; subsequent reads
-    /// fill the gaps on demand.
-    ///
-    /// # Returns
-    ///
-    /// Count of blocks successfully loaded into cache.
-    fn warm_caches(&self, depth: u64) -> usize {
-        let Some(t) = self.tip() else {
-            return 0;
-        };
-        let start = t.height.saturating_sub(depth.saturating_sub(1));
-        let mut count = 0usize;
-        for h in (start..=t.height).rev() {
-            // get_block_by_height populates: block_cache, header_cache, canonical_height_cache
-            // get_record_by_height populates: record_cache (derives from header)
-            // Both paths also populate hash_to_height_cache via put_block's wiring
-            if self.get_block_by_height(h).ok().flatten().is_some() {
-                // Also warm the record cache for this height
-                let _ = self.get_record_by_height(h);
-                count += 1;
-            }
-        }
-        count
-    }
-
     /// Serialize a block header for [`CF_HEADERS`] ([`SER-002`](../docs/requirements/domains/serialization/specs/SER-002.md)).
     ///
     /// **Write path (normative):** `L2BlockHeader` → [`bincode::serialize`] → raw bytes (no zstd). Headers are
