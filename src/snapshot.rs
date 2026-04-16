@@ -62,8 +62,6 @@ pub struct SnapshotManifest {
 /// Current snapshot schema version.
 pub const SNAPSHOT_VERSION: u32 = 1;
 
-use std::io::{Read, Write};
-
 use crate::constants::CF_BLOCKS;
 use crate::encoding::hash_key;
 use crate::error::BlockStoreError;

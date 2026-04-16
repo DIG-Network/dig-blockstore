@@ -128,7 +128,7 @@ After completing a requirement: write tests, verify they pass, update TRACKING.y
 - [x] MOD-001 — Extract compression logic into src/compression.rs (serialize_block, deserialize_block, decompress_block_payload, train_dictionary, maybe_train_dictionary, init_dictionary, sample_block_bodies)
 - [x] MOD-002 — Extract snapshot logic into src/snapshot.rs (export_snapshot, import_snapshot alongside SnapshotManifest)
 - [x] MOD-003 — Extract cache warming logic into src/cache/warming.rs (warm_caches)
-- [ ] MOD-004 — Extract async pipeline logic into src/pipeline.rs (PipelineJob, put_pipelined, pipeline_sender, run_write_pipeline, pipeline_write_batch_count)
+- [x] MOD-004 — Extract async pipeline logic into src/pipeline.rs (PipelineJob, put_pipelined, pipeline_sender, run_write_pipeline, pipeline_write_batch_count)
 - [x] MOD-005 — Extract canonical chain index logic into src/canonical/index.rs (get_hash_by_height, set_canonical, set_canonical_batch, extend_chain, insert_canonical_height_cache)
 
 ---
