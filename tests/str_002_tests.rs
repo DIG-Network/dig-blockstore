@@ -32,11 +32,8 @@ use std::path::PathBuf;
 use std::process::Command;
 
 use dig_blockstore::cache::sharded::{ShardedBlockCache, ShardedHeaderCache};
-use dig_blockstore::cache::warming::CacheWarming;
-use dig_blockstore::canonical::index::CanonicalIndex;
 use dig_blockstore::canonical::mmap::{CanonicalDenseFile, CANONICAL_BIN_FILE};
 use dig_blockstore::cf_options;
-use dig_blockstore::compression::CompressionPipeline;
 use dig_blockstore::config::BlockStoreConfig;
 use dig_blockstore::constants::{
     CF_ATTESTED, CF_BLOCKS, CF_CANONICAL, CF_CHECKPOINTS, CF_HEADERS, CF_METADATA,
@@ -44,8 +41,7 @@ use dig_blockstore::constants::{
 };
 use dig_blockstore::encoding;
 use dig_blockstore::error::BlockStoreError;
-use dig_blockstore::pipeline::BlockWritePipeline;
-use dig_blockstore::snapshot::SnapshotIo;
+use dig_blockstore::snapshot::SnapshotManifest;
 use dig_blockstore::store::BlockStore;
 use dig_blockstore::types::{BlockRecord, ChainTip, StorageStats, StoredCheckpoint};
 
@@ -110,14 +106,10 @@ fn test_each_module_defines_required_public_items() {
     let _ = core::mem::size_of::<BlockStoreError>();
     let _ = core::mem::size_of::<ShardedBlockCache>();
     let _ = core::mem::size_of::<ShardedHeaderCache>();
-    let _ = core::mem::size_of::<CacheWarming>();
-    let _ = core::mem::size_of::<CanonicalIndex>();
     let _ = CANONICAL_BIN_FILE.len();
     let _ = core::mem::size_of::<CanonicalDenseFile>();
-    let _ = core::mem::size_of::<CompressionPipeline>();
     let _ = cf_options::column_family_descriptors(&BlockStoreConfig::default(), None).len();
-    let _ = core::mem::size_of::<BlockWritePipeline>();
-    let _ = core::mem::size_of::<SnapshotIo>();
+    let _ = core::mem::size_of::<SnapshotManifest>();
 
     assert_eq!(CF_BLOCKS, "blocks");
     assert_eq!(CF_HEADERS, "headers");

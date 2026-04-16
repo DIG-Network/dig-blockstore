@@ -1,7 +1,4 @@
-//! Async batched write pipeline ([`BLK-008`](../docs/requirements/domains/block_storage/specs/BLK-008.md), `docs/resources/SPEC.md` write pipeline section).
+//! Async batched write pipeline ([`BLK-008`](../docs/requirements/domains/block_storage/specs/BLK-008.md)).
 //!
-//! **Runtime:** [`tokio`](https://docs.rs/tokio) channel + `rocksdb::WriteBatch`.
-
-/// Bounded async ingress queue draining into RocksDB batches (shell type for STR-002).
-#[derive(Debug, Default)]
-pub struct BlockWritePipeline {}
+//! Pipeline logic lives in [`crate::store::BlockStore::put_pipelined`] and the
+//! `run_write_pipeline` background task spawned on first call.

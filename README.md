@@ -28,7 +28,10 @@ Persistent block storage for the DIG L2 network. RocksDB-backed with six column 
 ## Quick Start
 
 ```rust
-use dig_blockstore::{BlockStore, BlockStoreConfig, ChainTip};
+use dig_blockstore::{
+    BlockStore, BlockStoreConfig, ChainTip,
+    L2Block, L2BlockHeader, Bytes32, BlockStatus,  // re-exported from dig-block / chia-protocol
+};
 
 // Open or create a store
 let config = BlockStoreConfig {
@@ -386,3 +389,16 @@ The checksum covers all bytes from the start of the manifest through the last bl
 | `lru` | LRU cache implementation |
 | `tokio` | Async runtime for write pipeline and async read APIs |
 | `memmap2` | Memory-mapped canonical.bin file |
+
+---
+
+## Thread Safety
+
+`BlockStore` is `Send + Sync + Clone`. All public methods take `&self`.
+
+- **Clone** is cheap (`Arc<Inner>` bump).
+- **Concurrent reads** are safe: sharded LRU caches use per-shard `parking_lot::RwLock`.
+- **Concurrent writes** are safe: RocksDB handles internal locking; record cache uses `Mutex`.
+- **Async** methods (`get_block_async`, `put_pipelined`) are designed for `tokio` runtimes.
+
+All upstream types re-exported from crate root (`L2Block`, `Bytes32`, `BlockStatus`, etc.) — consumers need only `dig-blockstore` in their `Cargo.toml`.

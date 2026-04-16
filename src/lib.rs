@@ -42,7 +42,12 @@ pub mod types;
 /// Chia [`Streamable`] wire serialization for [`dig_block::L2Block`] ([`SER-003`](../docs/requirements/domains/serialization/specs/SER-003.md)).
 pub mod wire;
 
-// --- STR-003: flat public API (`use dig_blockstore::{…}`) ---
+// --- STR-003 + API-001: flat public API (`use dig_blockstore::{…}`) ---
+//
+// Re-export upstream types that appear in public method signatures so consumers
+// can write `use dig_blockstore::{BlockStore, L2Block, Bytes32}` without adding
+// dig-block or chia-protocol to their own Cargo.toml.
+pub use chia_protocol::Bytes32;
 pub use config::BlockStoreConfig;
 pub use constants::{
     CF_ATTESTED, CF_BLOCKS, CF_CANONICAL, CF_CHECKPOINTS, CF_HEADERS, CF_METADATA,
@@ -52,6 +57,7 @@ pub use constants::{
     META_MIN_HEIGHT, META_SCHEMA_VERSION, META_TIP, META_ZSTD_DICT, SCHEMA_VERSION,
     ZSTD_COMPRESSION_LEVEL,
 };
+pub use dig_block::{AttestedBlock, BlockStatus, L2Block, L2BlockHeader};
 pub use encoding::{
     decode_epoch_key, decode_height_key, epoch_key, hash_key, height_key, metadata_key,
 };
@@ -65,7 +71,23 @@ pub use store::{BlockStore, StreamBlocksInRange};
 pub use types::{BlockRecord, ChainTip, ReorgResult, StorageStats, StoredCheckpoint};
 pub use wire::{block_from_wire_bytes, block_to_wire_bytes};
 
-use dig_block::L2BlockHeader;
+// --- API-003: Compile-time thread-safety assertions ---
+// BlockStore is designed for concurrent use across tokio tasks and thread pools.
+// All public methods take &self. Clone is cheap (Arc<Inner>).
+const _: () = {
+    fn _assert_send<T: Send>() {}
+    fn _assert_sync<T: Sync>() {}
+    fn _assert_clone<T: Clone>() {}
+    fn _assertions() {
+        _assert_send::<BlockStore>();
+        _assert_sync::<BlockStore>();
+        _assert_clone::<BlockStore>();
+        _assert_send::<BlockStoreError>();
+        _assert_sync::<BlockStoreError>();
+    }
+};
+
+// L2BlockHeader re-exported above via `pub use dig_block::...`
 use dig_constants::NetworkConstants;
 use dig_epoch::DigEpochStub;
 

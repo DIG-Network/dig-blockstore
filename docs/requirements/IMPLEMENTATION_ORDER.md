@@ -115,6 +115,14 @@ After completing a requirement: write tests, verify they pass, update TRACKING.y
 - [x] SNP-003 — SnapshotManifest struct
 - [x] SNP-004 — Checksum verification (SHA-256 of all preceding bytes)
 
+## Phase 12: Public Interface Hardening
+
+- [x] API-001 — Re-export upstream types used in public signatures (L2Block, L2BlockHeader, Bytes32, BlockStatus, AttestedBlock) so consumers need only `dig-blockstore` in Cargo.toml
+- [x] API-002 — Wire CAC-005 hash_to_height_cache reads into find_common_ancestor and set_canonical (currently write-only dead cache)
+- [x] API-003 — Compile-time Send+Sync+Clone assertions for BlockStore and BlockStoreError
+- [x] API-004 — Remove dead code stubs (CacheWarming, CompressionPipeline, BlockWritePipeline, SnapshotIo, CanonicalIndex) and update STR-002 tests
+- [x] API-005 — Fix README quick-start imports and add thread-safety docs
+
 ---
 
 ## Summary
@@ -133,4 +141,5 @@ After completing a requirement: write tests, verify they pass, update TRACKING.y
 | 9 | Checkpoint Storage | CKP-001 — CKP-004 (4) |
 | 10 | Pruning | PRN-001 — PRN-005 (5) |
 | 11 | Snapshot | SNP-001 — SNP-004 (4) |
-| **Total** | | **72** |
+| 12 | Public Interface | API-001 — API-005 (5) |
+| **Total** | | **77** |

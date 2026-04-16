@@ -62,6 +62,5 @@ pub struct SnapshotManifest {
 /// Current snapshot schema version.
 pub const SNAPSHOT_VERSION: u32 = 1;
 
-/// Facade for snapshot file I/O.
-#[derive(Debug, Default)]
-pub struct SnapshotIo {}
+// Snapshot export/import logic lives in [`crate::store::BlockStore::export_snapshot`]
+// and [`crate::store::BlockStore::import_snapshot`].

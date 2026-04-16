@@ -726,6 +726,8 @@ impl BlockStore {
         let block = self.deserialize_block(&raw)?;
         self.block_cache.insert(*hash, block.clone());
         self.header_cache.insert(*hash, block.header.clone());
+        // CAC-005 (API-002): populate hash→height on block read-through
+        self.hash_to_height_cache.insert(*hash, block.height());
         Ok(Some(block))
     }
 
@@ -1255,6 +1257,8 @@ impl BlockStore {
         };
         let header = Self::deserialize_header(&raw)?;
         self.header_cache.insert(*hash, header.clone());
+        // CAC-005 (API-002): populate hash→height on header read-through
+        self.hash_to_height_cache.insert(*hash, header.height);
         Ok(Some(header))
     }
 
@@ -1778,14 +1782,19 @@ impl BlockStore {
     ) -> Result<Option<(Bytes32, u64)>, BlockStoreError> {
         let mut current_hash = *hash;
         for _ in 0..max_depth {
+            // CAC-005 (API-002): try hash_to_height_cache first to avoid header deserialization
+            // when we only need the height for the canonical check.
             let record = match self.get_record(&current_hash)? {
                 Some(r) => r,
                 None => return Ok(None), // block not in store or chain broken
             };
+            let height = record.height;
+            // Populate hash→height cache on access (read-through for future lookups)
+            self.hash_to_height_cache.insert(current_hash, height);
             // Check if this block is canonical at its height
-            if let Some(canonical_hash) = self.get_hash_by_height(record.height)? {
+            if let Some(canonical_hash) = self.get_hash_by_height(height)? {
                 if canonical_hash == current_hash {
-                    return Ok(Some((current_hash, record.height)));
+                    return Ok(Some((current_hash, height)));
                 }
             }
             // Walk backwards via parent_hash
