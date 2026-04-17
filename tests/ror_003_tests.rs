@@ -10,6 +10,7 @@
 //! 1. Rolls back the canonical index to `ancestor_height`.
 //! 2. Applies new canonical hashes from `new_chain_hashes`.
 //! 3. Updates the chain tip.
+//!
 //! All within a single RocksDB WriteBatch for crash-safe atomicity.
 
 #![forbid(unsafe_code)]
@@ -19,7 +20,7 @@
 mod common;
 
 use chia_protocol::Bytes32;
-use dig_blockstore::{BlockStore, BlockStoreError, ChainTip};
+use dig_blockstore::{BlockStore, BlockStoreError};
 
 use common::{build_chain, temp_blockstore_dir, test_block, test_config};
 

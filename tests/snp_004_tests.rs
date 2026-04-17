@@ -9,7 +9,7 @@
 #[allow(dead_code)]
 mod common;
 
-use dig_blockstore::{BlockStore, BlockStoreError};
+use dig_blockstore::BlockStore;
 
 use common::{build_chain, temp_blockstore_dir, test_config};
 

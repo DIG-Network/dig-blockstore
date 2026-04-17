@@ -1584,7 +1584,7 @@ impl BlockStore {
         }
 
         // Update META_MIN_HEIGHT in the same batch
-        batch.put_cf(cf_meta, META_MIN_HEIGHT.as_bytes(), &height.to_le_bytes());
+        batch.put_cf(cf_meta, META_MIN_HEIGHT.as_bytes(), height.to_le_bytes());
 
         let count = pruned_hashes.len();
         self.db.write(batch)?;
@@ -1718,11 +1718,6 @@ impl BlockStore {
         Ok(())
     }
 
-    /// Count blocks persisted in [`CF_BLOCKS`] ([`SER-005`](../docs/requirements/domains/serialization/specs/SER-005.md) threshold).
-    ///
-    /// **Operational note:** Implemented as a full-column scan — acceptable for the **rare** dictionary-training edge;
-    /// production tipping paths should eventually cache this in [`CF_METADATA`](crate::CF_METADATA) if needed.
-
     /// Async retrieval by hash ([`BLK-007`](../docs/requirements/domains/block_storage/specs/BLK-007.md) AC §1, §4, §5).
     ///
     /// **Hot path:** [`Self::block_cache`] hits return cloned blocks **before** any `.await`, so the generated
@@ -1796,21 +1791,6 @@ impl BlockStore {
             .ok_or_else(|| BlockStoreError::Serialization(format!("missing column family {name}")))
     }
 }
-
-/// Determine the initial zstd dictionary for a freshly opened store.
-///
-/// # Priority order
-///
-/// 1. **Config override** (`zstd_dictionary_override`) — used in tests ([`SER-001`] / [`SER-005`])
-///    to inject a pre-trained dictionary without persisting it in [`META_ZSTD_DICT`].
-///    Empty override bytes are treated as "no dictionary" (returns `None`).
-/// 2. **Persisted metadata** — calls [`load_zstd_dict_from_db`] to check [`CF_METADATA`]
-///    for a non-empty [`META_ZSTD_DICT`] row written by [`BlockStore::train_dictionary`].
-/// 3. **None** — no dictionary available yet; compression falls through to plain zstd.
-///
-/// # Called by
-///
-/// [`BlockStore::open`] and [`BlockStore::open_readonly`] during construction.
 
 /// Load the current chain tip from [`CF_METADATA`] / [`META_TIP`].
 ///

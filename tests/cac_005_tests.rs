@@ -22,10 +22,9 @@
 #[allow(dead_code)]
 mod common;
 
-use chia_protocol::Bytes32;
 use dig_blockstore::{BlockStore, BlockStoreConfig};
 
-use common::{build_chain, temp_blockstore_dir, test_block, test_config};
+use common::{build_chain, temp_blockstore_dir, test_config};
 
 #[test]
 fn test_hash_to_height_default_capacity() {
@@ -104,7 +103,10 @@ fn test_hash_to_height_works_with_non_canonical_blocks() {
         .expect("rec")
         .expect("some");
     assert_eq!(rec.height, 1);
-    assert!(!rec.in_canonical_chain || true); // in_canonical_chain depends on status, not CF_CANONICAL
+    // in_canonical_chain derives from BlockStatus, not CF_CANONICAL membership,
+    // so either value is acceptable here — the behaviour under test is the
+    // hash→height cache population, not canonical classification.
+    let _ = rec.in_canonical_chain;
 }
 
 #[test]

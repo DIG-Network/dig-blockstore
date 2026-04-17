@@ -171,7 +171,7 @@ fn test_record_cache_set_canonical_reflects() {
     store
         .put_block(&chain[1], false)
         .expect("put non-canonical");
-    let rec_before = store
+    let _rec_before = store
         .get_record(&chain[1].hash())
         .expect("get")
         .expect("rec");

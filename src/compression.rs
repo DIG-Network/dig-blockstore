@@ -118,11 +118,11 @@ impl BlockStore {
         zstd::decode_all(compressed)
     }
 
-    /// Retrieve a full block by hash ([`BLK-002`](../docs/requirements/domains/block_storage/specs/BLK-002.md)).
+    /// Full scan of [`CF_BLOCKS`] to count stored block rows.
     ///
-    /// **Order:** [`Self::block_cache`] (sharded LRU, [`CAC-001`](../docs/requirements/domains/caching/specs/CAC-001_sharded_block_cache.md))
-    /// → on miss, `get_cf` [`CF_BLOCKS`] → [`Self::deserialize_block`] (dictionary zstd with plain fallback per [`SER-005`](../docs/requirements/domains/serialization/specs/SER-005.md)).
-
+    /// Iterates every key in the column family; used by [`crate::BlockStore::stats`] and by
+    /// [`Self::maybe_train_dictionary`] to detect when the training threshold is crossed
+    /// ([`SER-005`](../docs/requirements/domains/serialization/specs/SER-005.md)).
     pub fn block_count(&self) -> Result<u64, BlockStoreError> {
         let cf = self.cf(CF_BLOCKS)?;
         let iter = self.db.iterator_cf(cf, IteratorMode::Start);

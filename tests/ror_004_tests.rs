@@ -16,10 +16,9 @@
 #[allow(dead_code)]
 mod common;
 
-use chia_protocol::Bytes32;
 use dig_blockstore::BlockStore;
 
-use common::{build_chain, temp_blockstore_dir, test_block, test_config};
+use common::{build_chain, temp_blockstore_dir, test_config};
 
 #[test]
 fn test_blocks_survive_rollback() {

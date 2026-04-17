@@ -137,7 +137,7 @@ impl BlockStore {
             writer
                 .write_all(&len_bytes)
                 .map_err(|e| BlockStoreError::Serialization(format!("snapshot write: {e}")))?;
-            hasher.update(&len_bytes);
+            hasher.update(len_bytes);
 
             writer
                 .write_all(&compressed)
@@ -203,7 +203,7 @@ impl BlockStore {
             reader
                 .read_exact(&mut len_bytes)
                 .map_err(|e| BlockStoreError::Serialization(format!("snapshot read: {e}")))?;
-            hasher.update(&len_bytes);
+            hasher.update(len_bytes);
             let block_len = u32::from_le_bytes(len_bytes) as usize;
 
             // Read compressed block bytes

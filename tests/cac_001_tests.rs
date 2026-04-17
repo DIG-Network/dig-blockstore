@@ -32,7 +32,7 @@ use dig_block::constants::ZERO_HASH;
 use dig_blockstore::cache::sharded::ShardedBlockCache;
 use dig_blockstore::{BlockStore, BlockStoreConfig};
 
-use common::{build_chain, temp_blockstore_dir, test_block, test_config};
+use common::{temp_blockstore_dir, test_block, test_config};
 
 #[test]
 fn test_shard_count_default() {
