@@ -747,6 +747,8 @@ dependencies = [
 [[package]]
 name = "dig-block"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ec8c2e1df6eea073a4650bfe392d745984b92fa455b370f59cb1776b888243e6"
 dependencies = [
  "bincode",
  "bitcoin",

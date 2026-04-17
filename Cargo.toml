@@ -5,12 +5,10 @@
 # and `docs/requirements/domains/crate_structure/NORMATIVE.md`, with rationale in
 # `docs/resources/SPEC.md` Section 1.2 (“Crate Dependencies”).
 #
-# **Path vs registry (bootstrap note):** `dig-block` is not yet published on
-# crates.io as of this bootstrap; we pin `version = "0.1"` for semver intent
-# while resolving via `path = "../dig-block"` against the sibling repository.
-# `dig-epoch` is likewise unpublished; an in-repo stub under `stubs/dig-epoch`
-# satisfies the manifest contract until a real `dig-epoch` crate is released.
-# `dig-constants` resolves from crates.io (`"0.1"`).
+# **Path vs registry:** `dig-block` and `dig-constants` resolve from
+# crates.io (`"0.1"`). `dig-epoch` is not yet published; an in-repo stub
+# under `stubs/dig-epoch` satisfies the manifest contract until a real
+# `dig-epoch` crate is released.
 #
 # **Semantic links:**
 # - Requirement: `docs/requirements/domains/crate_structure/specs/STR-001.md`
@@ -27,7 +25,7 @@ repository = "https://github.com/DIG-Network/dig-blockstore"
 
 [dependencies]
 # --- DIG ecosystem (block types, epoch arithmetic, network constants) ---
-dig-block = { version = "0.1", path = "../dig-block" }
+dig-block = "0.1"
 dig-epoch = { version = "0.1", path = "stubs/dig-epoch" }
 dig-constants = "0.1"
 
