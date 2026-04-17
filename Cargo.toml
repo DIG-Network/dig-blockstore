@@ -5,10 +5,9 @@
 # and `docs/requirements/domains/crate_structure/NORMATIVE.md`, with rationale in
 # `docs/resources/SPEC.md` Section 1.2 (“Crate Dependencies”).
 #
-# **Path vs registry:** `dig-block` and `dig-constants` resolve from
-# crates.io (`"0.1"`). `dig-epoch` is not yet published; an in-repo stub
-# under `stubs/dig-epoch` satisfies the manifest contract until a real
-# `dig-epoch` crate is released.
+# **Registry deps:** `dig-block`, `dig-epoch`, and `dig-constants` all
+# resolve from crates.io at `"0.1"`. No path overrides — CI and `cargo
+# publish` both rely on the published tarballs.
 #
 # **Semantic links:**
 # - Requirement: `docs/requirements/domains/crate_structure/specs/STR-001.md`
@@ -26,7 +25,7 @@ repository = "https://github.com/DIG-Network/dig-blockstore"
 [dependencies]
 # --- DIG ecosystem (block types, epoch arithmetic, network constants) ---
 dig-block = "0.1"
-dig-epoch = { version = "0.1", path = "stubs/dig-epoch" }
+dig-epoch = "0.1"
 dig-constants = "0.1"
 
 # --- Chia ecosystem (hash type, BLS, SHA-256, Streamable wire interop) ---

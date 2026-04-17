@@ -195,13 +195,15 @@ fn test_get_record_by_height_delegates() {
 fn test_get_epoch_block_hashes_full_epoch() {
     // **Proves:** CAN-006 AC §9 — correct hashes for a complete epoch.
     //
-    // **Requirement complete when:** For a chain of 32+ blocks (one full epoch with
-    // BLOCKS_PER_EPOCH=32), `get_epoch_block_hashes(0)` returns exactly 32 hashes
-    // matching the canonical blocks at heights 0..31.
+    // **Requirement complete when:** After storing a chain covering heights
+    // 0..=32 (genesis + one full epoch 0), `get_epoch_block_hashes(0)` returns
+    // exactly `BLOCKS_PER_EPOCH` hashes matching canonical blocks at heights
+    // 1..=BLOCKS_PER_EPOCH (dig-epoch defines epoch 0 = [1, BLOCKS_PER_EPOCH]).
     let (_guard, path) = temp_blockstore_dir();
     let store = BlockStore::open(test_config(path)).expect("open");
     let epoch_size = dig_epoch::BLOCKS_PER_EPOCH as usize;
-    let chain = build_chain(epoch_size + 5); // Full epoch 0 + partial epoch 1
+    // chain[0] is genesis (height 0); chain[1..=epoch_size] covers epoch 0.
+    let chain = build_chain(epoch_size + 5); // genesis + epoch 0 + partial epoch 1
     store.init_genesis(&chain[0]).expect("genesis");
     for block in &chain[1..] {
         store.put_block(block, true).expect("put");
@@ -214,7 +216,8 @@ fn test_get_epoch_block_hashes_full_epoch() {
         "epoch 0 should have {epoch_size} hashes"
     );
     for (i, hash) in hashes.iter().enumerate() {
-        assert_eq!(*hash, chain[i].hash(), "epoch 0 hash at offset {i}");
+        // Epoch 0 covers heights [1, BLOCKS_PER_EPOCH], so offset i → chain[i + 1].
+        assert_eq!(*hash, chain[i + 1].hash(), "epoch 0 hash at offset {i}");
     }
 }
 
@@ -222,9 +225,10 @@ fn test_get_epoch_block_hashes_full_epoch() {
 fn test_get_epoch_block_hashes_partial_epoch() {
     // **Proves:** CAN-006 AC §10 — partial results for an incomplete epoch.
     //
-    // **Requirement complete when:** For a chain of 5 blocks (heights 0..4),
-    // `get_epoch_block_hashes(0)` returns exactly 5 hashes (not 32), stopping
-    // at the chain tip without error.
+    // **Requirement complete when:** For a chain of 5 blocks (heights 0..=4),
+    // epoch 0 = [1, BLOCKS_PER_EPOCH] intersects the chain at heights 1..=4,
+    // so `get_epoch_block_hashes(0)` returns exactly 4 hashes (stops at the
+    // chain tip without error).
     let (_guard, path) = temp_blockstore_dir();
     let store = BlockStore::open(test_config(path)).expect("open");
     let chain = build_chain(5);
@@ -234,9 +238,9 @@ fn test_get_epoch_block_hashes_partial_epoch() {
     }
 
     let hashes = store.get_epoch_block_hashes(0).expect("epoch 0 partial");
-    assert_eq!(hashes.len(), 5, "only 5 blocks stored in epoch 0");
+    assert_eq!(hashes.len(), 4, "heights 1..=4 of epoch 0 are stored");
     for (i, hash) in hashes.iter().enumerate() {
-        assert_eq!(*hash, chain[i].hash());
+        assert_eq!(*hash, chain[i + 1].hash());
     }
 }
 

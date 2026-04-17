@@ -89,7 +89,7 @@ const _: () = {
 
 // L2BlockHeader re-exported above via `pub use dig_block::...`
 use dig_constants::NetworkConstants;
-use dig_epoch::DigEpochStub;
+use dig_epoch::BLOCKS_PER_EPOCH;
 
 /// Exercises every **direct** `[dependencies]` entry from STR-001 so `cargo check`
 /// cannot succeed if any crate fails to resolve.
@@ -121,7 +121,7 @@ pub fn str001_dependency_smoke() -> usize {
     }
 
     let _: Bytes32 = Bytes32::default();
-    let _epoch: DigEpochStub = DigEpochStub;
+    let _epoch: u64 = BLOCKS_PER_EPOCH;
     let _net = core::mem::size_of::<NetworkConstants>();
     let _hdr = core::mem::size_of::<L2BlockHeader>();
     let _rocksdb = core::mem::size_of::<rocksdb::DB>();
@@ -153,4 +153,5 @@ pub fn str001_dependency_smoke() -> usize {
         + _lru
         + _rt
         + _map
+        + _epoch as usize
 }

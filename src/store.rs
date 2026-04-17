@@ -867,9 +867,10 @@ impl BlockStore {
 
     /// Collect canonical block hashes for all heights in the given epoch.
     ///
-    /// **Algorithm:** Uses [`dig_epoch::epoch_height_range`] to determine the `[start, end]`
-    /// height range, then calls [`Self::get_hash_by_height`] for each height. Stops early
-    /// when a height returns `None` (chain hasn't reached that height yet).
+    /// **Algorithm:** Uses [`dig_epoch::first_height_in_epoch`] and
+    /// [`dig_epoch::epoch_checkpoint_height`] to derive the inclusive `[start, end]`
+    /// height range, then calls [`Self::get_hash_by_height`] for each height. Stops
+    /// early when a height returns `None` (chain hasn't reached that height yet).
     ///
     /// **Returns:** A `Vec<Bytes32>` containing one hash per canonical height in the epoch,
     /// in ascending height order. May be shorter than `BLOCKS_PER_EPOCH` if the chain is
@@ -877,7 +878,8 @@ impl BlockStore {
     ///
     /// **Requirement:** [`CAN-006`](../docs/requirements/domains/canonical_chain/specs/CAN-006.md) § Epoch Block Hashes.
     pub fn get_epoch_block_hashes(&self, epoch: u64) -> Result<Vec<Bytes32>, BlockStoreError> {
-        let (start, end) = dig_epoch::epoch_height_range(epoch);
+        let start = dig_epoch::first_height_in_epoch(epoch);
+        let end = dig_epoch::epoch_checkpoint_height(epoch);
         let mut hashes = Vec::new();
         for height in start..=end {
             if let Some(hash) = self.get_hash_by_height(height)? {

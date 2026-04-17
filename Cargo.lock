@@ -831,6 +831,23 @@ dependencies = [
 [[package]]
 name = "dig-epoch"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3c6e605c17793cd2ed1eb7a8c3bf3cb1baca13d92880d03671a01792421013ee"
+dependencies = [
+ "bincode",
+ "chia-bls 0.26.0",
+ "chia-consensus",
+ "chia-protocol",
+ "chia-sdk-signer",
+ "chia-sdk-types",
+ "chia-sha2 0.26.0",
+ "clvm-utils",
+ "dig-block",
+ "dig-constants",
+ "parking_lot",
+ "serde",
+ "thiserror 2.0.18",
+]
 
 [[package]]
 name = "digest"
