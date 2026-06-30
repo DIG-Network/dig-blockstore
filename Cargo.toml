@@ -237,3 +237,20 @@ path = "tests/typ_007_tests.rs"
 [[test]]
 name = "typ_008_tests"
 path = "tests/typ_008_tests.rs"
+
+# --- Coverage-hardening suites (Task #157): exercise uncovered own-logic branches ---
+[[test]]
+name = "str_006_tests"
+path = "tests/str_006_tests.rs"
+
+[[test]]
+name = "can_008_tests"
+path = "tests/can_008_tests.rs"
+
+[[test]]
+name = "snp_005_tests"
+path = "tests/snp_005_tests.rs"
+
+[[test]]
+name = "ser_006_tests"
+path = "tests/ser_006_tests.rs"
