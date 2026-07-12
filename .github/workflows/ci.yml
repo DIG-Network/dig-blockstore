@@ -52,8 +52,12 @@ jobs:
       # (per CLAUDE.md). `--retries 2` lets nextest auto-retry a failed test and mark it "flaky"
       # (pass-after-retry) instead of failing the build outright; a test that fails all 3 attempts
       # still fails the gate. Coverage stays CI-gated at >=80% lines (--fail-under-lines 80).
+      # NOTE: `--test-threads`/`--retries` are cargo-nextest OPTIONS, not libtest binary args —
+      # they must precede any `--` separator (which nextest treats as a test-name filter), else
+      # nextest rejects them with "failed to parse test binary arguments ... arguments are
+      # unsupported" and the job fails before collecting any coverage (exit 96, no lcov.info).
       - name: Run tests with coverage (nextest, retries=2, gated at >=80% lines)
-        run: cargo llvm-cov nextest --all-features --workspace --lcov --output-path lcov.info --fail-under-lines 80 -- --test-threads=1 --retries 2
+        run: cargo llvm-cov nextest --all-features --workspace --lcov --output-path lcov.info --fail-under-lines 80 --test-threads 1 --retries 2
 
       - name: Coverage summary
         if: always()
