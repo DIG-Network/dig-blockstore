@@ -1,0 +1,75 @@
+# PR/push CI: fmt, clippy, nextest (with automatic flaky-retry) + coverage gate, doc check.
+# Uses cargo-nextest instead of `cargo test` — nextest natively retries a failed test and
+# reports it as "flaky" (pass-after-retry) rather than a hard failure, so a genuinely flaky
+# RocksDB-backed test doesn't block a PR while still surfacing the flake for triage.
+# Coverage stays gated at >=80% lines via `cargo llvm-cov nextest` (CLAUDE.md §2.3).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test + Coverage (>=80% lines)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          components: rustfmt, clippy, llvm-tools-preview
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@nextest
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Check clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      # The RocksDB integration tests use per-test temp directories and must run single-threaded
+      # (per CLAUDE.md). `--retries 2` lets nextest auto-retry a failed test and mark it "flaky"
+      # (pass-after-retry) instead of failing the build outright; a test that fails all 3 attempts
+      # still fails the gate. Coverage stays CI-gated at >=80% lines (--fail-under-lines 80).
+      # NOTE: `--test-threads`/`--retries` are cargo-nextest OPTIONS, not libtest binary args —
+      # they must precede any `--` separator (which nextest treats as a test-name filter), else
+      # nextest rejects them with "failed to parse test binary arguments ... arguments are
+      # unsupported" and the job fails before collecting any coverage (exit 96, no lcov.info).
+      - name: Run tests with coverage (nextest, retries=2, gated at >=80% lines)
+        run: cargo llvm-cov nextest --all-features --workspace --lcov --output-path lcov.info --fail-under-lines 80 --test-threads 1 --retries 2
+
+      - name: Coverage summary
+        if: always()
+        run: cargo llvm-cov report --summary-only
+
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lcov-coverage
+          path: lcov.info
+          if-no-files-found: warn
+
+      - name: Check documentation
+        run: cargo doc --no-deps --all-features
