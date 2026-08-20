@@ -72,18 +72,22 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GH_ACCESS_TOKEN }}
         with:
           tag_name: ${{ github.ref }}
-          release_name: "dig-mempool v${{ steps.extract_version.outputs.VERSION }}"
+          release_name: "dig-blockstore v${{ steps.extract_version.outputs.VERSION }}"
           body: |
-            ## dig-mempool v${{ steps.extract_version.outputs.VERSION }}
+            ## dig-blockstore v${{ steps.extract_version.outputs.VERSION }}
 
-            DIG L2 mempool — fee-prioritized, conflict-aware transaction pool with CPFP support.
+            Persistent block storage for the DIG L2 network. RocksDB-backed with six column
+            families, dual-layer canonical chain indexing (memory-mapped file + RocksDB),
+            sharded in-memory LRU caches, zstd compression with trained dictionaries, an async
+            write pipeline, rollback/reorg support, checkpoint storage, pruning, and snapshot
+            export/import.
 
             ### Installation
             ```toml
             [dependencies]
-            dig-mempool = "${{ steps.extract_version.outputs.VERSION }}"
+            dig-blockstore = "${{ steps.extract_version.outputs.VERSION }}"
             ```
 
-            See the [README](https://github.com/DIG-Network/dig-mempool/blob/main/README.md) for usage instructions.
+            See the [README](https://github.com/DIG-Network/dig-blockstore/blob/main/README.md) for usage instructions.
           draft: false
           prerelease: false
