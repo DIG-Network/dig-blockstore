@@ -14,7 +14,7 @@
 # - Tracking: `docs/requirements/domains/crate_structure/TRACKING.yaml`
 [package]
 name = "dig-blockstore"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2021"
 rust-version = "1.75.0"
 description = "DIG L2 block persistence — RocksDB-backed block store with canonical chain indexing"
