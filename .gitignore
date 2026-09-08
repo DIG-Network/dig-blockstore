@@ -29,3 +29,12 @@ docs/prompt/chat.md
 
 # npm (GitNexus CLI); install locally — do not commit dependencies
 /node_modules/
+
+# gitnexus writes agent-tooling files into the repository it indexes. They are
+# development-loop private and must never be tracked here.
+# CLAUDE.md is intentionally NOT ignored: this repo authors its own. Always run
+# `gitnexus analyze --skip-agents-md` here, or it re-injects its section into it.
+/AGENTS.md
+/.claude/skills/gitnexus/
+/.claude/skills/generated/
+/.gitnexus/
